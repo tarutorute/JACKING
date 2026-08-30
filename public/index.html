@@ -222,6 +222,13 @@
   .timer-chip .timer-unit{font-size:.68rem; color:var(--ink-faint);}
   .timer-chip.low{border-color:var(--danger);}
   .timer-chip.low .mono{color:var(--danger);}
+  .skip-chip{display:flex; align-items:center; gap:.5rem; padding:.3rem .7rem; border-radius:999px; background:var(--surface-2); border:1px solid var(--line);}
+  .skip-chip .skip-lbl{font-family:var(--font-mono); font-size:.6rem; letter-spacing:.14em; color:var(--ink-faint);}
+  .skip-grp{display:inline-flex; align-items:center; gap:3px;}
+  .skip-grp b{font-family:var(--font-mono); font-size:.62rem; color:var(--ink-soft); margin-right:1px;}
+  .skip-grp i{width:7px; height:7px; border-radius:50%; background:var(--line); display:block;}
+  .skip-grp i.on{background:var(--accent);}
+  .skip-grp.warn i.on{background:var(--danger);}
   .battle-layout{
     display:grid; grid-template-columns:260px minmax(0,1fr) 260px; gap:1.1rem; padding:1.1rem;
     flex:1; align-items:start;
@@ -347,7 +354,7 @@
         <li><b>合体</b> — 移動先に自分のカードがいれば、2枚を1枚に合体できる。</li>
         <li><b>持ち駒を打つ</b> — 自陣、または中央を越えてすぐの敵陣手前の列までの空いているマスに、持ち駒または捕獲したカードを1枚置く。</li>
       </ul>
-      <p>60秒以内に手を指さないと、自動的に手番が相手に移ります(残り時間は次のターンに繰り越せません)。</p>
+      <p>60秒以内に手を指さないと、自動的に手番が相手に移ります(残り時間は次のターンに繰り越せません)。これを「スキップ」と呼び、<b>手を指さないまま3回連続でスキップするとその人の負け</b>です。1回でも普通に手を指せばスキップの連続はリセットされます。画面上部の「SKIP」表示で両者のスキップ回数が確認できます。</p>
     </div>
 
     <div class="rules-section">
@@ -377,7 +384,9 @@
       <ul>
         <li>自分のカードが相手陣地の一番奥のマスに到達する</li>
         <li>相手のカードが、盤上・持ち駒・捕獲カードすべて含めて0枚になる</li>
+        <li>相手が3回連続でスキップする</li>
       </ul>
+      <p>最奥マスでの戦闘が相討ちになった場合は「到達」になりません。また、最後のカード同士が相討ちになるなどで<b>両者が同時に条件を満たした場合は引き分け</b>です。</p>
     </div>
 
     <button class="btn primary small" id="rulesCloseBtn" type="button">閉じる</button>
@@ -449,9 +458,14 @@ function newGame(){
     // the "捕獲したカード" privilege is per-player and pool-wide, not per-card: once
     // either side drops ANY one card from their captured pool, their whole captured
     // pool locks up for the rest of the game (unlike 持ち駒, which stays usable card by card).
-    capturedSummonUsed:{p1:false, p2:false}
+    capturedSummonUsed:{p1:false, p2:false},
+    // consecutive time-outs (skips) per player. Reset to 0 when that player
+    // actually completes a turn; reaching 3 in a row loses the game, so a
+    // both-sides-skipping stalemate can't drag on.
+    skips:{p1:0, p2:0}
   };
 }
+var SKIP_LIMIT = 3;
 var G = newGame();
 var turnTimerHandle = null;
 var timerPaused = false; // frozen while the rules modal is open, so reading up doesn't cost time
@@ -546,7 +560,7 @@ function serializeGame(){
     phase:G.phase, mode:"online", players:G.players, cards:G.cards, board:G.board,
     turnPlayer:G.turnPlayer, firstPlayer:G.firstPlayer, turnCount:G.turnCount,
     setup:G.setup, setupActive:G.setupActive, janken:G.janken, log:G.log,
-    winner:G.winner, winReason:G.winReason, stats:G.stats,
+    winner:G.winner, winReason:G.winReason, stats:G.stats, skips:G.skips,
     onlineSetupDone:G.onlineSetupDone, capturedSummonUsed:G.capturedSummonUsed
   }));
   // both players' snapshots must be byte-identical (so a spectator doesn't flip
@@ -727,6 +741,7 @@ function applyRemoteAction(peerSeat, msg){
     return;
   }
   clearSel();
+  if(G.skips) G.skips[peerSeat] = 0; // the peer completed a real move
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer = other(G.turnPlayer);
@@ -763,8 +778,19 @@ function timeUp(){
 }
 function endTurnByTimeout(){
   clearSel();
-  log("<b>"+G.players[G.turnPlayer].name+"</b>: 時間切れのため手番終了。");
-  G.turnPlayer = other(G.turnPlayer);
+  var who = G.turnPlayer;
+  if(!G.skips) G.skips = {p1:0, p2:0};
+  G.skips[who] = (G.skips[who] || 0) + 1;
+  log("<b>"+G.players[who].name+"</b>: 時間切れでスキップ（"+G.skips[who]+"/"+SKIP_LIMIT+"）。");
+  if(G.skips[who] >= SKIP_LIMIT){
+    log("<b>"+G.players[who].name+"</b>: スキップ"+SKIP_LIMIT+"回で敗北。");
+    G.winner = other(who);
+    G.winReason = "スキップ";
+    clearTurnTimer();
+    goPhase("result");
+    return;
+  }
+  G.turnPlayer = other(who);
   G.turnCount++;
   startTurnTimer();
   render();
@@ -1197,6 +1223,7 @@ function onHandCardClick(kind, uid){
 
 function afterAction(){
   clearSel();
+  if(G.skips) G.skips[G.turnPlayer] = 0; // a real move clears this player's skip streak
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer = other(G.turnPlayer);
@@ -1209,21 +1236,29 @@ function afterAction(){
 }
 
 function checkWin(){
+  // "reached" is only true for a card that is STILL on the board sitting on its
+  // own goal row. A piece that traded itself away in a mutual-destruction combat
+  // on the goal cell is already gone from the board here, so a 相打ち never counts
+  // as a 到達 - and if somehow both sides have a piece on their goal row at once,
+  // that's a draw, not a win for whoever the loop happened to check last.
+  var reached = {p1:false, p2:false};
   ["p1","p2"].forEach(function(pid){
     var goalRow = GOAL_ROW[pid];
     for(var c=0;c<3;c++){
-      var cellIdx = cellAt(goalRow,c);
-      var occ = G.board[cellIdx];
-      if(occ && G.cards[occ].owner===pid){
-        G.winner = pid; G.winReason="到達";
-      }
+      var occ = G.board[cellAt(goalRow,c)];
+      if(occ && G.cards[occ].owner===pid) reached[pid] = true;
     }
   });
-  if(!G.winner){
-    ["p1","p2"].forEach(function(pid){
-      if(playerCardCount(pid)===0){ G.winner = other(pid); G.winReason="全滅"; }
-    });
-  }
+  if(reached.p1 && reached.p2){ G.winner="draw"; G.winReason="到達"; return; }
+  if(reached.p1){ G.winner="p1"; G.winReason="到達"; return; }
+  if(reached.p2){ G.winner="p2"; G.winReason="到達"; return; }
+
+  // annihilation: if BOTH sides are wiped out in the same combat (e.g. each
+  // player's last card kills the other in a 相打ち), nobody wins - it's a draw.
+  var dead = {p1: playerCardCount("p1")===0, p2: playerCardCount("p2")===0};
+  if(dead.p1 && dead.p2){ G.winner="draw"; G.winReason="全滅"; return; }
+  if(dead.p1){ G.winner="p2"; G.winReason="全滅"; return; }
+  if(dead.p2){ G.winner="p1"; G.winReason="全滅"; return; }
 }
 
 /* ============================== CPU AI ============================== */
@@ -1252,7 +1287,8 @@ function withSimulatedG(fn){
     log:[], sel:null, winner:null, winReason:null,
     stats:{p1:{captures:savedG.stats.p1.captures}, p2:{captures:savedG.stats.p2.captures}},
     mySeat:savedG.mySeat, onlineSetupDone:savedG.onlineSetupDone, cpuLevel:savedG.cpuLevel,
-    capturedSummonUsed:{p1:savedG.capturedSummonUsed.p1, p2:savedG.capturedSummonUsed.p2}
+    capturedSummonUsed:{p1:savedG.capturedSummonUsed.p1, p2:savedG.capturedSummonUsed.p2},
+    skips:{p1:(savedG.skips?savedG.skips.p1:0), p2:(savedG.skips?savedG.skips.p2:0)}
   };
   G = simG;
   var result;
@@ -1446,6 +1482,7 @@ function cpuTakeTurn(){
   var action = cpuChooseAction(pid, G.cpuLevel||2);
   if(!action){ G.turnPlayer="p1"; G.turnCount++; startTurnTimer(); render(); return; }
   applyCandidateAction(pid, action);
+  if(G.skips) G.skips.p2 = 0;
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer="p1"; G.turnCount++;
@@ -1889,6 +1926,21 @@ function renderSideCol(pid){
   '</div>';
 }
 
+// compact "time-out skip" tally shown in the battle header. Each player gets three
+// pips; they fill up as that player skips a turn on the clock, and SKIP_LIMIT of
+// them in a row loses the game.
+function skipTallyEl(){
+  var s = G.skips || {p1:0, p2:0};
+  function group(pid){
+    var n = s[pid] || 0;
+    var pips = "";
+    for(var i=0;i<SKIP_LIMIT;i++) pips += '<i'+(i<n?' class="on"':'')+'></i>';
+    return '<span class="skip-grp'+(n>=SKIP_LIMIT-1?' warn':'')+'" title="'+G.players[pid].label+' 時間切れスキップ '+n+'/'+SKIP_LIMIT+'（'+SKIP_LIMIT+'でその人の負け）">'+
+      '<b>'+G.players[pid].label+'</b>'+pips+'</span>';
+  }
+  return '<div class="skip-chip"><span class="skip-lbl">SKIP</span>'+group("p1")+group("p2")+'</div>';
+}
+
 function renderBattle(){
   if(G.phase!=="battle") return '<section class="screen" id="screen-battle"></section>';
   var cur = G.turnPlayer;
@@ -1926,6 +1978,7 @@ function renderBattle(){
     '<div class="battle-top">'+
       '<div class="turn-pill"><span class="turn-dot" style="background:var('+G.players[cur].colorVar+')"></span>'+G.players[cur].name+'の番 <span class="mono" style="color:var(--ink-faint);font-size:.75rem;">Turn '+G.turnCount+'</span></div>'+
       '<div class="timer-chip'+(G.turnSeconds<=10?" low":"")+'"><span class="mono">'+G.turnSeconds+'</span><span class="timer-unit">秒</span></div>'+
+      skipTallyEl()+
       '<div class="battle-top-actions">'+
         ((isSpectator() || Net.spectators>0) ? '<span class="turn-pill" style="font-size:.78rem;color:var(--ink-soft)">👁 観戦 '+Net.spectators+'人</span>' : '')+
         '<button class="btn small ghost" data-action="open-rules">ルール</button>'+
@@ -1951,11 +2004,22 @@ function renderBattle(){
 function renderResult(){
   if(G.phase!=="result") return '<section class="screen" id="screen-result"></section>';
   var w = G.winner;
+  var isDraw = (w==="draw");
+  var headline, detail;
+  if(isDraw){
+    headline = "引き分け";
+    detail = G.winReason==="到達" ? "両者が同時に最奥へ到達" : "お互いのカードが全滅";
+  } else {
+    headline = (G.players[w]?G.players[w].name:"") + "の勝利";
+    if(G.winReason==="到達") detail = "相手陣地の最奥マスに到達";
+    else if(G.winReason==="スキップ") detail = "相手が時間切れスキップ"+SKIP_LIMIT+"回で敗北";
+    else detail = "相手のカードを全滅させた";
+  }
   return '<section class="screen" id="screen-result">'+
     '<div class="result-banner">'+
       '<span class="eyebrow">Result</span>'+
-      '<h2>'+G.players[w].name+'の勝利</h2>'+
-      '<p style="color:var(--ink-soft)">勝因: '+(G.winReason==="到達"? "相手陣地の最奥マスに到達":"相手のカードを全滅させた")+'</p>'+
+      '<h2'+(isDraw?' style="color:var(--ink-soft)"':'')+'>'+headline+'</h2>'+
+      '<p style="color:var(--ink-soft)">'+(isDraw?"":"勝因: ")+detail+'</p>'+
     '</div>'+
     '<div class="screen-body">'+
       '<div class="result-stats">'+
@@ -2082,6 +2146,18 @@ function bindStaticEvents(){
 }
 
 bindStaticEvents();
+
+// test seam: only exposed with ?test=1, used by the headless regression tests to
+// drive checkWin/combat directly instead of trying to steer a random game via the UI.
+if(/[?&]test=1(&|$)/.test(location.search)){
+  window.__jackingTest = {
+    get G(){ return G; },
+    set G(v){ G = v; },
+    newGame:newGame, checkWin:checkWin, performCombat:performCombat, cardEl:cardEl,
+    cellAt:cellAt, GOAL_ROW:GOAL_ROW, playerCardCount:playerCardCount, render:render, goPhase:goPhase,
+    endTurnByTimeout:endTurnByTimeout, afterAction:afterAction, SKIP_LIMIT:SKIP_LIMIT
+  };
+}
 
 // deep link: /?room=ABC123 lands straight on the join form with the room filled in
 (function(){
