@@ -354,7 +354,7 @@
         <li><b>合体</b> — 移動先に自分のカードがいれば、2枚を1枚に合体できる。</li>
         <li><b>持ち駒を打つ</b> — 自陣、または中央を越えてすぐの敵陣手前の列までの空いているマスに、持ち駒または捕獲したカードを1枚置く。</li>
       </ul>
-      <p>60秒以内に手を指さないと、自動的に手番が相手に移ります(残り時間は次のターンに繰り越せません)。これを「スキップ」と呼び、<b>手を指さないまま3回連続でスキップするとその人の負け</b>です。1回でも普通に手を指せばスキップの連続はリセットされます。画面上部の「SKIP」表示で両者のスキップ回数が確認できます。</p>
+      <p>60秒以内に手を指さないと、自動的に手番が相手に移ります(残り時間は次のターンに繰り越せません)。これを「スキップ」と呼び、<b>スキップが累計3回になったその人の負け</b>です(連続でなくても加算されます)。画面上部の「SKIP」表示で両者のスキップ回数が確認できます。</p>
     </div>
 
     <div class="rules-section">
@@ -384,7 +384,7 @@
       <ul>
         <li>自分のカードが相手陣地の一番奥のマスに到達する</li>
         <li>相手のカードが、盤上・持ち駒・捕獲カードすべて含めて0枚になる</li>
-        <li>相手が3回連続でスキップする</li>
+        <li>相手のスキップが累計3回になる</li>
       </ul>
       <p>最奥マスでの戦闘が相討ちになった場合は「到達」になりません。また、最後のカード同士が相討ちになるなどで<b>両者が同時に条件を満たした場合は引き分け</b>です。</p>
     </div>
@@ -459,9 +459,8 @@ function newGame(){
     // either side drops ANY one card from their captured pool, their whole captured
     // pool locks up for the rest of the game (unlike 持ち駒, which stays usable card by card).
     capturedSummonUsed:{p1:false, p2:false},
-    // consecutive time-outs (skips) per player. Reset to 0 when that player
-    // actually completes a turn; reaching 3 in a row loses the game, so a
-    // both-sides-skipping stalemate can't drag on.
+    // total time-out skips per player over the whole game. Reaching SKIP_LIMIT
+    // loses, so a both-sides-skipping stalemate can't drag on.
     skips:{p1:0, p2:0}
   };
 }
@@ -741,7 +740,6 @@ function applyRemoteAction(peerSeat, msg){
     return;
   }
   clearSel();
-  if(G.skips) G.skips[peerSeat] = 0; // the peer completed a real move
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer = other(G.turnPlayer);
@@ -781,9 +779,9 @@ function endTurnByTimeout(){
   var who = G.turnPlayer;
   if(!G.skips) G.skips = {p1:0, p2:0};
   G.skips[who] = (G.skips[who] || 0) + 1;
-  log("<b>"+G.players[who].name+"</b>: 時間切れでスキップ（"+G.skips[who]+"/"+SKIP_LIMIT+"）。");
+  log("<b>"+G.players[who].name+"</b>: 時間切れでスキップ（累計 "+G.skips[who]+"/"+SKIP_LIMIT+"）。");
   if(G.skips[who] >= SKIP_LIMIT){
-    log("<b>"+G.players[who].name+"</b>: スキップ"+SKIP_LIMIT+"回で敗北。");
+    log("<b>"+G.players[who].name+"</b>: スキップ累計"+SKIP_LIMIT+"回で敗北。");
     G.winner = other(who);
     G.winReason = "スキップ";
     clearTurnTimer();
@@ -1223,7 +1221,6 @@ function onHandCardClick(kind, uid){
 
 function afterAction(){
   clearSel();
-  if(G.skips) G.skips[G.turnPlayer] = 0; // a real move clears this player's skip streak
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer = other(G.turnPlayer);
@@ -1482,7 +1479,6 @@ function cpuTakeTurn(){
   var action = cpuChooseAction(pid, G.cpuLevel||2);
   if(!action){ G.turnPlayer="p1"; G.turnCount++; startTurnTimer(); render(); return; }
   applyCandidateAction(pid, action);
-  if(G.skips) G.skips.p2 = 0;
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer="p1"; G.turnCount++;
@@ -1928,14 +1924,14 @@ function renderSideCol(pid){
 
 // compact "time-out skip" tally shown in the battle header. Each player gets three
 // pips; they fill up as that player skips a turn on the clock, and SKIP_LIMIT of
-// them in a row loses the game.
+// them total (over the whole game) loses.
 function skipTallyEl(){
   var s = G.skips || {p1:0, p2:0};
   function group(pid){
     var n = s[pid] || 0;
     var pips = "";
     for(var i=0;i<SKIP_LIMIT;i++) pips += '<i'+(i<n?' class="on"':'')+'></i>';
-    return '<span class="skip-grp'+(n>=SKIP_LIMIT-1?' warn':'')+'" title="'+G.players[pid].label+' 時間切れスキップ '+n+'/'+SKIP_LIMIT+'（'+SKIP_LIMIT+'でその人の負け）">'+
+    return '<span class="skip-grp'+(n>=SKIP_LIMIT-1?' warn':'')+'" title="'+G.players[pid].label+' 時間切れスキップ 累計'+n+'/'+SKIP_LIMIT+'（'+SKIP_LIMIT+'でその人の負け）">'+
       '<b>'+G.players[pid].label+'</b>'+pips+'</span>';
   }
   return '<div class="skip-chip"><span class="skip-lbl">SKIP</span>'+group("p1")+group("p2")+'</div>';
@@ -2012,7 +2008,7 @@ function renderResult(){
   } else {
     headline = (G.players[w]?G.players[w].name:"") + "の勝利";
     if(G.winReason==="到達") detail = "相手陣地の最奥マスに到達";
-    else if(G.winReason==="スキップ") detail = "相手が時間切れスキップ"+SKIP_LIMIT+"回で敗北";
+    else if(G.winReason==="スキップ") detail = "相手が時間切れスキップ累計"+SKIP_LIMIT+"回で敗北";
     else detail = "相手のカードを全滅させた";
   }
   return '<section class="screen" id="screen-result">'+
