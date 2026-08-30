@@ -1,0 +1,16 @@
+{
+  "name": "jacking-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dumb WebSocket relay for JACKING online play. Pairs two clients into a password-protected room and forwards JSON messages between them. Has no knowledge of the game rules.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

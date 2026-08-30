@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>JACKING</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  /* JACKING runs one deliberate look: a dark card room in red and black. */
+  :root{
+    --bg:#120D0C;
+    --surface:#1C1513;
+    --surface-2:#251C19;
+    --ink:#F2E8E2;
+    --ink-soft:#BBA89D;
+    --ink-faint:#7E6B62;
+    --accent:#D62839;
+    --accent-strong:#A81F2E;
+    --accent-ink:#FFF4F1;
+    --line:#3B2B26;
+    --line-soft:#2A1F1B;
+    --p1:#171310;
+    --p1-soft:rgba(23,19,16,.16);
+    --p1-line:rgba(30,24,21,.5);
+    --p2:#C81E3A;
+    --p2-soft:rgba(200,30,58,.14);
+    --p2-line:rgba(200,30,58,.42);
+    --good:#3FAE6B;
+    --danger:#FF3B3B;
+    --shadow:0 4px 18px rgba(0,0,0,.5);
+    --shadow-lg:0 18px 48px rgba(0,0,0,.65);
+    --radius:10px;
+    --card-face:#F3EAE2;
+    --card-face-2:#E8DBCE;
+    --card-border:#D8C7B9;
+    --font-hero:'Dela Gothic One', 'Zen Kaku Gothic New', sans-serif;
+    --font-display:'Zen Kaku Gothic New', sans-serif;
+    --font-body:'Zen Kaku Gothic New', sans-serif;
+    --font-mono:'JetBrains Mono', monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  button{font-family:inherit;}
+  h1{font-family:var(--font-hero); text-wrap:balance; margin:0;}
+  h2,h3{font-family:var(--font-display); font-weight:900; text-wrap:balance; margin:0;}
+  .mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+  ::selection{background:var(--accent); color:var(--accent-ink);}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+  #app{min-height:100vh; display:flex; flex-direction:column;}
+  .screen{display:none; flex:1; flex-direction:column; align-items:center; width:100%;}
+  .screen.active{display:flex;}
+
+  /* ---------- shared bits ---------- */
+  .btn{
+    appearance:none; border:1px solid var(--line); background:var(--surface-2);
+    color:var(--ink); font-family:var(--font-body); font-weight:700; font-size:.95rem;
+    padding:.85rem 1.6rem; border-radius:10px; cursor:pointer; letter-spacing:.02em;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    box-shadow:var(--shadow);
+  }
+  .btn:hover{transform:translateY(-1px); border-color:var(--accent);}
+  .btn:active{transform:translateY(0);}
+  .btn.primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent-strong);}
+  .btn.primary:disabled{opacity:.4; cursor:not-allowed; transform:none;}
+  .btn.ghost{background:transparent; box-shadow:none;}
+  .btn.small{padding:.5rem 1rem; font-size:.82rem;}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--accent); font-weight:700;
+  }
+  .panel{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow);
+  }
+
+  /* ---------- title ---------- */
+  #screen-title{
+    justify-content:center; gap:2.2rem; text-align:center; padding:6vh 1.5rem;
+    background:
+      radial-gradient(ellipse at 50% -10%, var(--p2-soft), transparent 55%),
+      radial-gradient(ellipse at 50% 110%, var(--p1-soft), transparent 55%);
+  }
+  .title-mark{display:flex; flex-direction:column; align-items:center; gap:.9rem;}
+  .title-suits{font-size:1.1rem; letter-spacing:.5em; color:var(--accent);}
+  .title-mark h1{font-size:clamp(3rem,10vw,5.5rem); letter-spacing:.03em; line-height:1; color:var(--ink); text-shadow:0 0 40px var(--p2-soft);}
+  .title-tagline{max-width:34rem; color:var(--ink-soft); line-height:1.9; font-size:.95rem;}
+  .title-actions{display:flex; flex-direction:column; gap:.7rem; align-items:center; margin-top:.5rem;}
+
+  /* ---------- generic screen header ---------- */
+  .screen-head{
+    width:100%; max-width:56rem; padding:2.2rem 1.5rem 1rem; text-align:center;
+    display:flex; flex-direction:column; gap:.5rem; align-items:center;
+  }
+  .screen-head h2{font-size:clamp(1.6rem,4vw,2.2rem);}
+  .screen-head p{color:var(--ink-soft); font-size:.92rem; line-height:1.7; max-width:38rem;}
+  .screen-body{width:100%; max-width:60rem; padding:0 1.5rem 3rem; display:flex; flex-direction:column; align-items:center; gap:1.6rem; flex:1;}
+
+  /* ---------- mode select ---------- */
+  .mode-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1.2rem; width:100%; max-width:64rem;}
+  @media (max-width:900px){.mode-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:640px){.mode-grid{grid-template-columns:1fr;}}
+  .mode-card{
+    padding:1.6rem; text-align:left; cursor:pointer; display:flex; flex-direction:column; gap:.6rem;
+  }
+  .mode-card h3{font-size:1.2rem;}
+  .mode-card p{margin:0; color:var(--ink-soft); font-size:.85rem; line-height:1.7;}
+  .mode-card .tag{align-self:flex-start; font-family:var(--font-mono); font-size:.68rem; letter-spacing:.1em; padding:.2rem .55rem; border-radius:5px; background:var(--accent); color:var(--accent-ink); font-weight:700;}
+  .mode-card:hover{border-color:var(--accent);}
+
+  /* ---------- card visual ---------- */
+  .card{
+    position:relative; border-radius:8px; border:1.5px solid var(--card-border);
+    background:var(--card-face); display:flex; flex-direction:column; justify-content:space-between;
+    font-family:var(--font-mono); font-weight:700; user-select:none;
+    box-shadow:var(--shadow);
+  }
+  .card .pip{font-size:.62em; line-height:1; padding:3px 4px;}
+  .card .center{flex:1; display:flex; align-items:center; justify-content:center; font-size:1.5em;}
+  .card.p1{color:var(--p1); border-color:var(--card-border);}
+  .card.p2{color:var(--p2); border-color:var(--card-border);}
+  .card.joker .center{font-size:.85em; font-family:var(--font-display); font-weight:900; letter-spacing:.05em;}
+  .card.joker .charges{position:absolute; bottom:3px; right:5px; font-size:.55em; letter-spacing:2px;}
+  .card.back{background:repeating-linear-gradient(135deg, var(--card-face-2), var(--card-face-2) 4px, var(--card-face) 4px, var(--card-face) 8px); border-color:var(--card-border);}
+  .card.fused{outline:2px dashed var(--accent); outline-offset:2px;}
+  .card.selectable{cursor:pointer;}
+  .card.selectable:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg);}
+  .card.chosen{outline:2px solid var(--accent); outline-offset:2px; transform:translateY(-6px);}
+
+  /* fan palette for setup */
+  .fan{display:flex; justify-content:center; align-items:flex-end; padding:1.6rem 0 1rem; min-height:150px;}
+  .fan .card{width:66px; height:96px; margin:0 -14px; transition:transform .15s ease, box-shadow .15s ease; box-shadow:var(--shadow);}
+  .fan .card.placed{opacity:.32; filter:grayscale(.4);}
+  .fan .card:hover:not(.placed){z-index:5;}
+
+  /* setup board */
+  .setup-wrap{display:flex; gap:2rem; align-items:flex-start; flex-wrap:wrap; justify-content:center; width:100%;}
+  .setup-grid{display:grid; grid-template-columns:repeat(3,64px); grid-template-rows:repeat(3,92px); gap:8px;}
+  .setup-cell{
+    border-radius:8px; border:1.5px dashed var(--line); display:flex; align-items:center; justify-content:center;
+    background:var(--surface); cursor:pointer; transition:border-color .12s ease, background .12s ease;
+  }
+  .setup-cell.front{border-style:solid; background:var(--surface-2);}
+  .setup-cell.front:hover{border-color:var(--accent);}
+  .setup-cell.back-row{opacity:.5;}
+  .setup-cell .card{width:100%; height:100%; box-shadow:none;}
+  .setup-side{display:flex; flex-direction:column; gap:.6rem; font-size:.82rem; color:var(--ink-soft); max-width:14rem; padding-top:.4rem;}
+  .setup-side b{color:var(--ink);}
+
+  /* ---------- coin flip / janken ---------- */
+  .hand-choices{display:flex; gap:1rem; flex-wrap:wrap; justify-content:center;}
+  .hand-btn{
+    display:flex; flex-direction:column; align-items:center; gap:.5rem; padding:1.2rem 1.4rem;
+    border-radius:var(--radius); border:1.5px solid var(--line); background:var(--surface-2); cursor:pointer;
+    font-weight:700;
+  }
+  .hand-btn:hover{border-color:var(--accent); transform:translateY(-2px);}
+  .hand-glyph{font-size:1.8rem; font-family:var(--font-display);}
+  .pass-gate{display:flex; flex-direction:column; align-items:center; gap:1.2rem; text-align:center; padding:3rem 1.5rem;}
+
+  .janken-reveal{display:flex; align-items:center; justify-content:center; gap:1.4rem; flex-wrap:wrap;}
+  .janken-hand-card{
+    display:flex; flex-direction:column; align-items:center; gap:.5rem; padding:1.4rem 1.8rem;
+    border-radius:var(--radius); border:1.5px solid var(--line); background:var(--surface-2); min-width:9rem;
+  }
+  .janken-hand-card .jk-label{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.08em; color:var(--ink-faint); text-transform:uppercase;}
+  .jk-vs{font-family:var(--font-mono); font-weight:700; color:var(--ink-faint); font-size:.9rem;}
+  .janken-result-text{font-family:var(--font-display); font-size:1.6rem; font-weight:700; text-align:center; margin-top:.6rem;}
+  .janken-result-text.draw{color:var(--ink-soft);}
+  .janken-result-text:not(.draw){color:var(--accent);}
+  .janken-wait{display:flex; flex-direction:column; align-items:center; gap:1rem; text-align:center; padding:2rem 1.5rem;}
+
+  /* ---------- online play ---------- */
+  .field{display:flex; flex-direction:column; gap:.4rem; width:100%; max-width:22rem; text-align:left;}
+  .field label{font-family:var(--font-mono); font-size:.7rem; letter-spacing:.08em; color:var(--ink-faint); text-transform:uppercase;}
+  .field input{
+    font-family:var(--font-mono); font-size:1rem; padding:.7rem .9rem; border-radius:8px;
+    border:1.5px solid var(--line); background:var(--surface-2); color:var(--ink); width:100%;
+  }
+  .field input:focus-visible{outline:none; border-color:var(--accent);}
+  .field.small input{font-size:.85rem; padding:.55rem .75rem;}
+  .online-form{display:flex; flex-direction:column; gap:1rem; align-items:center; width:100%;}
+  .room-code{font-family:var(--font-mono); font-size:2.6rem; font-weight:700; letter-spacing:.16em; color:var(--accent); text-align:center; padding:.4rem 0;}
+  .online-status{display:flex; align-items:center; gap:.55rem; font-size:.85rem; color:var(--ink-soft); justify-content:center;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:var(--ink-faint); flex:none;}
+  .status-dot.live{background:var(--good); animation:jk-pulse 1.4s ease-in-out infinite;}
+  @media (prefers-reduced-motion: reduce){ .status-dot.live{animation:none;} }
+  @keyframes jk-pulse{0%,100%{opacity:1;} 50%{opacity:.35;}}
+  .net-error{color:var(--danger); font-size:.85rem; text-align:center; min-height:1.3em;}
+  .advanced-toggle{font-size:.75rem; color:var(--ink-faint); text-decoration:underline; cursor:pointer; background:none; border:none; font-family:inherit; padding:0;}
+  .peer-left-banner{
+    position:fixed; top:60px; left:50%; transform:translateX(-50%); z-index:25;
+    background:var(--danger); color:var(--accent-ink); padding:.7rem 1.3rem; border-radius:999px;
+    font-weight:700; font-size:.85rem; box-shadow:var(--shadow-lg); display:none;
+  }
+  .peer-left-banner.show{display:block;}
+
+  /* ---------- battle screen ---------- */
+  #screen-battle{align-items:stretch;}
+  .battle-top{
+    display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.8rem 1.2rem;
+    border-bottom:1px solid var(--line); background:var(--surface); flex-wrap:wrap;
+  }
+  .battle-top-actions{display:flex; align-items:center; gap:.5rem;}
+  .turn-pill{display:flex; align-items:center; gap:.5rem; font-weight:700; font-size:.85rem;}
+  .turn-dot{width:10px; height:10px; border-radius:50%;}
+  .timer-chip{display:flex; align-items:baseline; gap:.3rem; padding:.35rem .85rem; border-radius:999px; background:var(--surface-2); border:1px solid var(--line);}
+  .timer-chip .mono{font-size:1.2rem; font-weight:700;}
+  .timer-chip .timer-unit{font-size:.68rem; color:var(--ink-faint);}
+  .timer-chip.low{border-color:var(--danger);}
+  .timer-chip.low .mono{color:var(--danger);}
+  .battle-layout{
+    display:grid; grid-template-columns:260px minmax(0,1fr) 260px; gap:1.1rem; padding:1.1rem;
+    flex:1; align-items:start;
+  }
+  @media (max-width:1000px){ .battle-layout{grid-template-columns:1fr; } }
+
+  .side-col{display:flex; flex-direction:column; gap:.9rem;}
+  .side-block{padding:.8rem .9rem;}
+  .side-block h4{font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin:0 0 .55rem; font-family:var(--font-mono);}
+  .mini-row{display:flex; flex-wrap:wrap; gap:8px;}
+  .mini-card{width:60px; height:86px; font-size:.85rem; position:relative;}
+  .mini-card .center{font-size:1.5em;}
+  .mini-card.spent{opacity:.4; filter:grayscale(.7);}
+  .spent-label{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center;
+    font-family:var(--font-mono); font-size:.6rem; font-weight:700; letter-spacing:.04em; color:var(--ink);
+    background:rgba(0,0,0,.4); border-radius:8px; padding:2px; pointer-events:none;
+  }
+  .reserve-back-pile{display:flex; align-items:center; gap:.7rem;}
+  .reserve-back-pile .card{width:60px; height:86px;}
+  .count-badge{font-family:var(--font-mono); font-weight:700; font-size:1.3rem;}
+
+  .board-wrap{display:flex; flex-direction:column; align-items:center; gap:.6rem;}
+  .board{
+    display:grid; grid-template-columns:repeat(3, minmax(58px,84px)); grid-template-rows:repeat(6, minmax(58px,84px));
+    gap:6px; padding:10px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
+    position:relative;
+  }
+  .cell{
+    border-radius:8px; background:var(--surface-2); border:1px solid var(--line-soft);
+    display:flex; align-items:center; justify-content:center; position:relative; cursor:default;
+  }
+  .board .cell:nth-child(9){border-bottom:2px solid var(--accent);}
+  .board .cell:nth-child(10){border-top:2px solid var(--accent);}
+  .cell.zone-p2{background:color-mix(in srgb, var(--p2-soft) 60%, var(--surface-2));}
+  .cell.zone-p1{background:color-mix(in srgb, var(--p1-soft) 60%, var(--surface-2));}
+  .cell .card{width:100%; height:100%; box-shadow:none;}
+  .cell.legal-move::after{content:"";position:absolute;inset:6px;border-radius:6px;border:2px solid var(--good);}
+  .cell.legal-attack::after{content:"";position:absolute;inset:6px;border-radius:6px;border:2px solid var(--danger);}
+  .cell.legal-fuse::after{content:"";position:absolute;inset:6px;border-radius:6px;border:2px solid var(--accent);}
+  .cell.legal-drop::after{content:"";position:absolute;inset:6px;border-radius:6px;border:2px dashed var(--accent);}
+  .cell.selected{box-shadow:inset 0 0 0 2px var(--accent);}
+  .goal-row-hint{font-family:var(--font-mono); font-size:.68rem; color:var(--ink-faint); letter-spacing:.08em;}
+
+  .log-panel{width:100%; max-width:960px; margin:0 1.1rem 1.1rem; padding:.7rem .9rem; max-height:110px; overflow-y:auto;}
+  .log-panel h4{font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); margin:0 0 .4rem; font-family:var(--font-mono);}
+  .log-line{font-size:.78rem; color:var(--ink-soft); line-height:1.6;}
+  .log-line b{color:var(--ink);}
+
+  .action-hint{
+    font-size:.82rem; color:var(--ink-soft); text-align:center; min-height:1.4em;
+  }
+
+  /* ---------- result ---------- */
+  .result-banner{
+    display:flex; flex-direction:column; align-items:center; gap:.4rem; padding:2.4rem 1.5rem 1rem; text-align:center;
+  }
+  .result-banner .eyebrow{margin-bottom:.3rem;}
+  .result-banner h2{font-size:clamp(2rem,6vw,3rem);}
+  .result-stats{display:grid; grid-template-columns:1fr 1fr; gap:1rem; width:100%; max-width:34rem;}
+  .stat-card{padding:1rem 1.2rem; text-align:center;}
+  .stat-card .num{font-family:var(--font-mono); font-size:1.6rem; font-weight:700; color:var(--accent);}
+  .stat-card .lbl{font-size:.72rem; color:var(--ink-faint); letter-spacing:.06em;}
+  .result-actions{display:flex; gap:.8rem; margin-top:1rem; flex-wrap:wrap; justify-content:center;}
+
+  .helpbtn{position:fixed; top:14px; right:14px; z-index:20;}
+  body.phase-battle .helpbtn{display:none;}
+  .rules-modal{
+    position:fixed; inset:0; background:rgba(10,10,8,.55); display:none; align-items:center; justify-content:center; padding:2rem; z-index:30;
+  }
+  .rules-modal.open{display:flex;}
+  .rules-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-lg);
+    max-width:34rem; max-height:80vh; overflow-y:auto; padding:1.6rem 1.8rem;
+  }
+  .rules-card h3{margin-bottom:.9rem;}
+  .rules-card ul{margin:.3rem 0; padding-left:1.1rem; color:var(--ink-soft); font-size:.85rem; line-height:1.9;}
+  .rules-card .btn{margin-top:1.2rem;}
+  .rules-card .rules-section{margin-bottom:1.15rem;}
+  .rules-card .rules-section:last-of-type{margin-bottom:0;}
+  .rules-card h4{font-family:var(--font-mono); font-size:.72rem; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); margin:0 0 .4rem; font-weight:700;}
+  .rules-card p{margin:.3rem 0; color:var(--ink-soft); font-size:.85rem; line-height:1.8;}
+  .rules-card b{color:var(--ink);}
+  .confirm-actions{display:flex; gap:.7rem; margin-top:1.3rem; justify-content:flex-end;}
+  .confirm-actions .btn{margin-top:0;}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<button class="btn small helpbtn" id="rulesOpenBtn" type="button">ルール</button>
+<div class="peer-left-banner" id="peerLeftBanner">相手が切断しました</div>
+
+<div class="rules-modal" id="rulesModal">
+  <div class="rules-card">
+    <h3>ルール説明</h3>
+
+    <div class="rules-section">
+      <h4>ゲームの目的</h4>
+      <p>トランプを将棋のように動かして戦う、1対1のカードゲームです。相手陣地の一番奥のマスにたどり着くか、相手のカードをすべて無力化すれば勝ちです。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>盤面</h4>
+      <p>盤は3列×6行、合計18マス。自分に近い3行(3×3マス)が自陣、残りの3行が敵陣です。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>準備(初期配置)</h4>
+      <p>1〜13の数字13枚とジョーカー、合計14枚が持ち札です。このうち好きな6枚を選び、自陣の中で自分に近い2列(6マス)に、好きな順番・好きな位置で伏せて置きます。中央寄りの1列(3マス)は空けたままにします。配置しなかった8枚は「持ち駒」として、対戦中いつでも盤に打てます。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>先攻・後攻</h4>
+      <p>両者の配置が終わったら、じゃんけんで先攻を決めます。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>手番でできること(1ターン1手・持ち時間60秒)</h4>
+      <ul>
+        <li><b>移動</b> — 盤上の自分のカードを、斜めを含む全8方向へ1マス動かす。</li>
+        <li><b>戦闘</b> — 移動先に相手のカードがいれば、自動的にぶつかり合いになる。</li>
+        <li><b>合体</b> — 移動先に自分のカードがいれば、2枚を1枚に合体できる。</li>
+        <li><b>持ち駒を打つ</b> — 自陣、または中央を越えてすぐの敵陣手前の列までの空いているマスに、持ち駒または捕獲したカードを1枚置く。</li>
+      </ul>
+      <p>60秒以内に手を指さないと、自動的に手番が相手に移ります(残り時間は次のターンに繰り越せません)。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>カードの強さ</h4>
+      <p>基本的に数字が大きい方が勝ちます(例: 5は4に勝つ)。同じ数字同士がぶつかった場合は相討ちとなり、両方とも自分の墓地に送られます。唯一の例外として、「1」は「13」に勝ちます。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>合体</h4>
+      <p>自分のカード同士を重ねて合体させると、数値が合計された1枚のカードになります(例: 12+13=25)。移動できるマス数は合体後も1マスのまま変わりません。合体は一度行うと解除できず、重ねられるのは2枚まで。ジョーカーは合体できません。捕獲した相手のカードを自分のカードと合体させることもできます。</p>
+      <p>合体したカードが戦闘で敗れて捕られると、元の2枚のカードに戻り、勝った側の捕獲カードとして個別に手に入ります(合体したままでは使えません)。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>ジョーカー</h4>
+      <p>ジョーカーはどんな数字(合体カードも含む)にも、2回までは確実に勝ちます。1回勝つごとに力を1つ消費し、2回使い切ると力尽きて自分の墓地に送られます。ジョーカー同士がぶつかった場合は相討ちです。</p>
+      <p>あえて自分の弱いカードをジョーカーにぶつけて、残り回数を減らしておく — という作戦も使えます。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>捕獲したカード</h4>
+      <p>戦闘で奪ったカードは、ジョーカーを除いて自分の駒として盤に打てます。ただし持ち駒とは違い、捕獲したカード全体からまとめて一度きりの権利です。何枚捕獲していても、その中からどれか1枚を打った時点で、残り(その後さらに捕獲したカードも含む)はすべて使えなくなります。</p>
+    </div>
+
+    <div class="rules-section">
+      <h4>勝利条件</h4>
+      <ul>
+        <li>自分のカードが相手陣地の一番奥のマスに到達する</li>
+        <li>相手のカードが、盤上・持ち駒・捕獲カードすべて含めて0枚になる</li>
+      </ul>
+    </div>
+
+    <button class="btn primary small" id="rulesCloseBtn" type="button">閉じる</button>
+  </div>
+</div>
+
+<div class="rules-modal" id="confirmModal">
+  <div class="rules-card" style="max-width:24rem;">
+    <h3>対戦を中断しますか？</h3>
+    <p style="margin:0;">現在の対戦内容は失われます。</p>
+    <div class="confirm-actions">
+      <button class="btn ghost" id="confirmCancelBtn" type="button">キャンセル</button>
+      <button class="btn primary" id="confirmOkBtn" type="button">対戦モード選択に戻る</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================== state ============================== */
+var UID = 0;
+function nextUid(){ UID++; return "c"+UID; }
+
+function freshDeck(owner){
+  var cards = {};
+  for(var v=1; v<=13; v++){
+    var id = nextUid();
+    cards[id] = {uid:id, value:v, isJoker:false, owner:owner, origin:owner, loc:"deck", cell:null, isFused:false, parts:null};
+  }
+  var jid = nextUid();
+  cards[jid] = {uid:jid, value:null, isJoker:true, owner:owner, origin:owner, loc:"deck", cell:null, isFused:false, parts:null, charges:2};
+  return cards;
+}
+
+function newGame(){
+  var cards = {};
+  var d1 = freshDeck("p1"); var d2 = freshDeck("p2");
+  Object.assign(cards, d1, d2);
+  return {
+    phase:"title",
+    mode:null,
+    players:{
+      p1:{id:"p1", name:"あなた", suit:"♠", label:"P1", colorVar:"--p1", deckIds:Object.keys(d1)},
+      p2:{id:"p2", name:"相手", suit:"♥", label:"P2", colorVar:"--p2", deckIds:Object.keys(d2)}
+    },
+    cards:cards,
+    board:new Array(18).fill(null),
+    turnPlayer:"p1",
+    turnSeconds:60,
+    firstPlayer:null,
+    turnCount:1,
+    setup:{
+      p1:{placed:{}, doneCells:[]},
+      p2:{placed:{}, doneCells:[]}
+    },
+    setupActive:"p1",
+    passGateNext:null,
+    janken:{p1:null, p2:null, rounds:0, result:null, retryReady:{p1:false, p2:false}},
+    log:[],
+    sel:null,
+    winner:null,
+    winReason:null,
+    stats:{p1:{captures:0}, p2:{captures:0}},
+    mySeat:null,
+    onlineSetupDone:{p1:false, p2:false},
+    cpuLevel:2,
+    // the "捕獲したカード" privilege is per-player and pool-wide, not per-card: once
+    // either side drops ANY one card from their captured pool, their whole captured
+    // pool locks up for the rest of the game (unlike 持ち駒, which stays usable card by card).
+    capturedSummonUsed:{p1:false, p2:false}
+  };
+}
+var G = newGame();
+var turnTimerHandle = null;
+var timerPaused = false; // frozen while the rules modal is open, so reading up doesn't cost time
+
+/* ============================== online connection ============================== */
+// Net holds the live connection; it survives across newGame() resets so a room
+// isn't dropped just because the local match state gets rebuilt.
+var Net = {
+  ws:null, room:null, pass:"", seat:null, role:null, serverUrl:"",
+  connecting:false, error:"", spectators:0
+};
+var snapshotRev = 0;
+var lastSnapshotSent = "";
+var pendingJoinRoom = "";
+var specTurnKey = "";
+
+function isSpectator(){ return Net.role==="spec"; }
+
+function netDefaultServerUrl(){
+  try { var s = localStorage.getItem("jacking.serverUrl"); if(s) return s; } catch(e){}
+  // when the page is served from the relay itself, talk to the same origin
+  if(location.protocol==="http:" || location.protocol==="https:"){
+    return (location.protocol==="https:" ? "wss://" : "ws://") + location.host;
+  }
+  return "";
+}
+function netRememberServerUrl(url){
+  try { localStorage.setItem("jacking.serverUrl", url); } catch(e){}
+}
+
+function netConnect(url, onOpen){
+  netDisconnect();
+  Net.serverUrl = url;
+  Net.connecting = true;
+  Net.error = "";
+  netRememberServerUrl(url);
+  var ws;
+  try{
+    ws = new WebSocket(url);
+  } catch(e){
+    Net.connecting = false;
+    Net.error = "サーバーURLが正しくありません。";
+    render();
+    return;
+  }
+  Net.ws = ws;
+  ws.onopen = function(){ Net.connecting = false; if(onOpen) onOpen(); render(); };
+  ws.onerror = function(){ Net.connecting = false; Net.error = "サーバーに接続できませんでした。"; render(); };
+  ws.onclose = function(){
+    if(Net.ws===ws){
+      Net.connecting = false;
+      if(isSpectator()){
+        showPeerLeftBanner("サーバーとの接続が切れました");
+      } else if(G.mode==="online" && !G.winner && (G.phase==="battle"||G.phase==="setup"||G.phase==="janken"||G.phase==="online-setup-wait")){
+        showPeerLeftBanner();
+      }
+    }
+  };
+  ws.onmessage = function(ev){
+    var msg;
+    try{ msg = JSON.parse(ev.data); } catch(e){ return; }
+    netHandleMessage(msg);
+  };
+}
+function netDisconnect(){
+  if(Net.ws){
+    try{ Net.ws.onclose = null; Net.ws.close(); } catch(e){}
+  }
+  Net.ws = null; Net.room = null; Net.pass = ""; Net.seat = null; Net.role = null;
+  Net.connecting = false; Net.error = ""; Net.spectators = 0;
+  lastSnapshotSent = ""; specTurnKey = "";
+}
+function netRaw(obj){
+  if(Net.ws && Net.ws.readyState===1){ Net.ws.send(JSON.stringify(obj)); }
+}
+function netSend(gameMsg){
+  if(G.mode!=="online") return;
+  netRaw({t:"relay", data:gameMsg});
+}
+
+/* ---- spectator snapshots ----
+   The relay forwards player moves to the other player, but a spectator (and
+   especially one who joins mid-game) needs the whole picture. So each player
+   publishes a full-state snapshot whenever the local state changes; the relay
+   caches the latest and pushes it to every spectator. Spectators never run game
+   logic - they just render whatever snapshot arrives. */
+function serializeGame(){
+  // turnSeconds is deliberately left out: it changes every second and would spam a
+  // snapshot per tick. Spectators just restart their own 60s display clock whenever
+  // the turn changes.
+  var snap = JSON.parse(JSON.stringify({
+    phase:G.phase, mode:"online", players:G.players, cards:G.cards, board:G.board,
+    turnPlayer:G.turnPlayer, firstPlayer:G.firstPlayer, turnCount:G.turnCount,
+    setup:G.setup, setupActive:G.setupActive, janken:G.janken, log:G.log,
+    winner:G.winner, winReason:G.winReason, stats:G.stats,
+    onlineSetupDone:G.onlineSetupDone, capturedSummonUsed:G.capturedSummonUsed
+  }));
+  // both players' snapshots must be byte-identical (so a spectator doesn't flip
+  // between them): strip the per-client "あなた"/"相手" naming and seat.
+  snap.players.p1.name = "プレイヤー1";
+  snap.players.p2.name = "プレイヤー2";
+  return snap;
+}
+function maybeSendSnapshot(){
+  if(G.mode!=="online" || isSpectator()) return;
+  if(Net.role!==0 && Net.role!==1) return;
+  if(!Net.ws || Net.ws.readyState!==1) return;
+  var snap = serializeGame();
+  var str = JSON.stringify(snap);
+  if(str===lastSnapshotSent) return;
+  lastSnapshotSent = str;
+  snapshotRev++;
+  netRaw({t:"snapshot", data:snap, rev:snapshotRev});
+}
+
+function applySpectatorSnapshot(data){
+  if(!data) return;
+  hidePeerLeftBanner();
+  var prevSeconds = (G && typeof G.turnSeconds==="number") ? G.turnSeconds : 60;
+  G = data;
+  G.mode = "online";
+  G.sel = null;
+  G.mySeat = null;      // a spectator controls nothing
+  G.cpuLevel = 2;
+  G.__srcPhase = data.phase;
+  G.phase = spectatorPhaseFor(data.phase);
+  var key = data.turnCount + "/" + data.turnPlayer + "/" + data.phase;
+  G.turnSeconds = (key===specTurnKey) ? prevSeconds : 60;
+  specTurnKey = key;
+  clearTurnTimer();
+  if(G.phase==="battle" && !G.winner) startSpectatorTimer();
+  render();
+}
+function spectatorPhaseFor(p){
+  if(p==="battle") return "battle";
+  if(p==="result") return "result";
+  return "spec-wait"; // title / setup / janken / online-setup-wait
+}
+function startSpectatorTimer(){
+  clearTurnTimer();
+  turnTimerHandle = setInterval(function(){
+    if(timerPaused) return;
+    if(G.turnSeconds>0){ G.turnSeconds--; render(); }
+  }, 1000);
+}
+function netCreateRoom(url, pass){
+  netConnect(url, function(){
+    netRaw({t:"create", pass:pass});
+  });
+  Net.pass = pass;
+}
+function netJoinRoom(url, room, pass){
+  netConnect(url, function(){
+    netRaw({t:"join", room:room.toUpperCase(), pass:pass});
+  });
+  Net.pass = pass;
+}
+function netHandleMessage(msg){
+  if(msg.t==="created"){
+    Net.room = msg.room;
+    Net.seat = "p1"; Net.role = 0;
+    render();
+  } else if(msg.t==="joined"){
+    Net.room = msg.room;
+    if(msg.seat==="spec"){
+      Net.seat = null; Net.role = "spec";
+      goPhase("spec-wait");
+    } else {
+      Net.seat = "p2"; Net.role = 1;
+      render();
+    }
+  } else if(msg.t==="ready"){
+    if(Net.seat===null) Net.seat = "p1"; // creator learns its seat once the room is actually live
+    if(Net.role===null) Net.role = 0;
+    G.mySeat = Net.seat;
+    G.players[G.mySeat].name = "あなた";
+    G.players[other(G.mySeat)].name = "相手";
+    G.setupActive = G.mySeat;
+    goPhase("setup");
+  } else if(msg.t==="err"){
+    Net.error = netErrorText(msg.reason);
+    render();
+  } else if(msg.t==="spectators"){
+    Net.spectators = msg.count||0;
+    render();
+  } else if(msg.t==="want_snapshot"){
+    lastSnapshotSent = ""; // force a resend
+    maybeSendSnapshot();
+  } else if(msg.t==="snapshot"){
+    if(isSpectator()) applySpectatorSnapshot(msg.data);
+  } else if(msg.t==="peer_left"){
+    if(isSpectator()){
+      // a player dropped out mid-broadcast; keep showing the frozen board
+      showPeerLeftBanner("対戦者が退出しました");
+    } else if(!G.winner){ showPeerLeftBanner(); }
+  } else if(msg.t==="relay"){
+    if(!isSpectator()) applyRemote(msg.data);
+  }
+}
+function netErrorText(reason){
+  if(reason==="need_password") return "パスワードを入力してください。";
+  if(reason==="not_found") return "その部屋IDは見つかりませんでした。";
+  if(reason==="bad_password") return "パスワードが違います。";
+  if(reason==="full") return "その部屋は満員です。";
+  return "エラーが発生しました。";
+}
+function showPeerLeftBanner(text){
+  clearTurnTimer();
+  var el = document.getElementById("peerLeftBanner");
+  if(el){
+    if(text) el.textContent = text;
+    el.classList.add("show");
+  }
+}
+function hidePeerLeftBanner(){
+  var el = document.getElementById("peerLeftBanner");
+  if(el) el.classList.remove("show");
+}
+
+// translate an incoming game message into the same local mutations a live
+// player's own actions would cause, without echoing anything back out.
+function applyRemote(msg){
+  var peerSeat = other(G.mySeat);
+  if(msg.k==="setup"){
+    msg.cells.forEach(function(entry){
+      var uid = findDeckUid(peerSeat, entry.value, entry.isJoker);
+      if(uid) G.setup[peerSeat].placed[entry.cell] = uid;
+    });
+    confirmSetup(peerSeat, true);
+  } else if(msg.k==="janken"){
+    jankenPick(peerSeat, msg.hand, true);
+  } else if(msg.k==="janken-retry"){
+    G.janken.retryReady[peerSeat] = true;
+    if(G.janken.retryReady.p1 && G.janken.retryReady.p2){ jankenResetRound(); }
+    else { render(); }
+  } else if(msg.k==="action"){
+    applyRemoteAction(peerSeat, msg);
+  }
+}
+function findDeckUid(owner, value, isJoker){
+  var cards = deckCards(owner);
+  for(var i=0;i<cards.length;i++){
+    var c = cards[i];
+    if(isJoker ? c.isJoker : (!c.isJoker && c.value===value)) return c.uid;
+  }
+  return null;
+}
+function findActiveCardByIdentity(owner, value, isJoker){
+  var found = null;
+  Object.keys(G.cards).forEach(function(id){
+    var c = G.cards[id];
+    if(found) return;
+    if(c.origin===owner && c.isJoker===!!isJoker && (isJoker || c.value===value) && (c.loc==="reserve"||c.loc==="captured")){
+      found = c;
+    }
+  });
+  return found;
+}
+function applyRemoteAction(peerSeat, msg){
+  if(msg.kind==="move"){
+    performMove(G.cards[G.board[msg.from]], msg.to);
+  } else if(msg.kind==="fuse"){
+    performFuse(G.cards[G.board[msg.from]], G.cards[G.board[msg.to]]);
+  } else if(msg.kind==="attack"){
+    performCombat(G.cards[G.board[msg.from]], G.cards[G.board[msg.to]], msg.to);
+  } else if(msg.kind==="drop"){
+    var card = findActiveCardByIdentity(msg.origin, msg.value, msg.isJoker);
+    if(card){
+      dropCardToBoard(peerSeat, card, msg.to);
+    }
+  } else if(msg.kind==="timeout"){
+    endTurnByTimeout();
+    return;
+  }
+  clearSel();
+  checkWin();
+  if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
+  G.turnPlayer = other(G.turnPlayer);
+  G.turnCount++;
+  startTurnTimer();
+  render();
+}
+
+/* ============================== turn timer ============================== */
+function clearTurnTimer(){
+  if(turnTimerHandle){ clearInterval(turnTimerHandle); turnTimerHandle=null; }
+}
+function startTurnTimer(){
+  clearTurnTimer();
+  G.turnSeconds = 60;
+  turnTimerHandle = setInterval(function(){
+    if(timerPaused) return;
+    G.turnSeconds--;
+    if(G.turnSeconds<=0){
+      clearTurnTimer();
+      // in online play, only the side whose turn it actually is decides when time's up;
+      // the other side just waits for that decision (or a real move) to arrive over the wire.
+      if(G.mode==="online" && G.turnPlayer!==G.mySeat) return;
+      timeUp();
+    } else {
+      render();
+    }
+  }, 1000);
+}
+function timeUp(){
+  if(G.winner) return;
+  if(G.mode==="online") netSend({k:"action", kind:"timeout"});
+  endTurnByTimeout();
+}
+function endTurnByTimeout(){
+  clearSel();
+  log("<b>"+G.players[G.turnPlayer].name+"</b>: 時間切れのため手番終了。");
+  G.turnPlayer = other(G.turnPlayer);
+  G.turnCount++;
+  startTurnTimer();
+  render();
+  if(G.mode==="cpu" && G.turnPlayer==="p2"){
+    setTimeout(cpuTakeTurn, 550);
+  }
+}
+function isMyControllableTurn(pid){
+  if(G.mode==="cpu") return pid==="p1";
+  if(G.mode==="online") return pid===G.mySeat;
+  return true;
+}
+
+/* ============================== helpers ============================== */
+function other(pid){ return pid==="p1" ? "p2" : "p1"; }
+function rowOf(cell){ return Math.floor(cell/3); }
+function colOf(cell){ return cell%3; }
+function cellAt(r,c){ if(r<0||r>5||c<0||c>2) return -1; return r*3+c; }
+var TERRITORY = { p1:[0,1,2], p2:[3,4,5] };
+var FRONT_ROWS = { p1:[0,1], p2:[4,5] };
+var GOAL_ROW = { p1:5, p2:0 };
+// where a hand card (reserve or captured) may be dropped: own 3x3 territory, plus the
+// one enemy row just across the centre line, i.e. up to "4th row" counting from home.
+var DROP_ROWS = { p1:[0,1,2,3], p2:[2,3,4,5] };
+
+function dropZoneCells(pid){
+  var rows = DROP_ROWS[pid]; var out=[];
+  rows.forEach(function(r){ for(var c=0;c<3;c++) out.push(cellAt(r,c)); });
+  return out;
+}
+function frontCells(pid){
+  var rows = FRONT_ROWS[pid]; var out=[];
+  rows.forEach(function(r){ for(var c=0;c<3;c++) out.push(cellAt(r,c)); });
+  return out;
+}
+
+function effectiveValue(card){
+  if(card.isFused){ return card.parts[0].value + card.parts[1].value; }
+  return card.value;
+}
+function log(msg){ G.log.unshift(msg); if(G.log.length>60) G.log.pop(); }
+
+function playerCardCount(pid){
+  // a locked captured pool (its one-time summon already spent) can never be played
+  // again, so those cards no longer count as "cards pid still has" for the
+  // all-cards-gone win check - otherwise a dead, unusable captured card sitting in
+  // the pool could make annihilation mathematically unreachable.
+  var capturedLocked = G.capturedSummonUsed[pid];
+  var n=0;
+  Object.keys(G.cards).forEach(function(id){
+    var c = G.cards[id];
+    if(c.owner!==pid) return;
+    if(c.loc==="board" || c.loc==="reserve") n++;
+    else if(c.loc==="captured" && !capturedLocked) n++;
+  });
+  return n;
+}
+
+/* ============================== setup phase logic ============================== */
+function deckCards(pid){
+  return G.players[pid].deckIds.map(function(id){return G.cards[id];});
+}
+function isPlacedInSetup(pid, uid){
+  var p = G.setup[pid].placed;
+  for(var k in p){ if(p[k]===uid) return true; }
+  return false;
+}
+function setupPlaceCount(pid){ return Object.keys(G.setup[pid].placed).length; }
+
+function armCardForSetup(pid, uid){
+  G.sel = {kind:"setup-arm", pid:pid, uid:uid};
+}
+function placeSetupCard(pid, cell){
+  if(!G.sel || G.sel.kind!=="setup-arm") return;
+  var uid = G.sel.uid;
+  if(isPlacedInSetup(pid, uid)) return;
+  var fc = frontCells(pid);
+  if(fc.indexOf(cell)===-1) return;
+  // if this cell already holds a different card, it gets bumped back to the fan
+  if(G.setup[pid].placed[cell] && G.setup[pid].placed[cell]!==uid){
+    delete G.setup[pid].placed[cell];
+  }
+  G.setup[pid].placed[cell] = uid;
+  G.sel = null;
+}
+function unplaceSetupCell(pid, cell){
+  if(G.setup[pid].placed[cell]){
+    delete G.setup[pid].placed[cell];
+    G.sel = null;
+  }
+}
+function confirmSetup(pid, fromNetwork){
+  if(setupPlaceCount(pid) !== 6) return;
+  if(G.mode==="online" && !fromNetwork && pid!==G.mySeat) return;
+
+  var placedUids = Object.keys(G.setup[pid].placed).map(function(cell){return {cell:cell, uid:G.setup[pid].placed[cell]};});
+  placedUids.forEach(function(entry){
+    var c = G.cards[entry.uid];
+    c.loc="board"; c.cell=Number(entry.cell);
+    G.board[entry.cell]=entry.uid;
+  });
+  deckCards(pid).forEach(function(c){
+    if(c.loc==="deck"){ c.loc="reserve"; }
+  });
+
+  if(G.mode==="online"){
+    if(!fromNetwork){
+      netSend({k:"setup", cells: placedUids.map(function(entry){
+        var c = G.cards[entry.uid];
+        return {cell:Number(entry.cell), value:c.value, isJoker:c.isJoker};
+      })});
+    }
+    G.onlineSetupDone[pid] = true;
+    if(G.onlineSetupDone.p1 && G.onlineSetupDone.p2){
+      goPhase("janken");
+    } else if(pid===G.mySeat){
+      goPhase("online-setup-wait");
+    } else {
+      render();
+    }
+    return;
+  }
+
+  if(pid==="p1"){
+    if(G.mode==="cpu"){
+      cpuSetup();
+      goPhase("janken");
+    } else {
+      G.setupActive="p2";
+      G.passGateNext="setup";
+      goPhase("passgate");
+    }
+  } else {
+    goPhase("janken");
+  }
+}
+function cpuSetup(){
+  var pid="p2";
+  var pool = deckCards(pid).map(function(c){return c.uid;});
+  // simple heuristic: keep joker + a spread of mid/high values up front, some low as bait
+  var byVal = pool.slice().sort(function(a,b){
+    var ca=G.cards[a], cb=G.cards[b];
+    var va = ca.isJoker? 99 : ca.value; var vb = cb.isJoker? 99 : cb.value;
+    return vb-va;
+  });
+  var chosen = [byVal[0], byVal[1], byVal[2], byVal[byVal.length-1], byVal[Math.floor(byVal.length/2)], byVal[Math.floor(byVal.length/2)+1]];
+  chosen = chosen.filter(function(v,i){return chosen.indexOf(v)===i;});
+  while(chosen.length<6){
+    var cand = byVal[Math.floor(Math.random()*byVal.length)];
+    if(chosen.indexOf(cand)===-1) chosen.push(cand);
+  }
+  var fc = frontCells(pid).slice();
+  shuffle(fc);
+  chosen.forEach(function(uid, i){
+    G.setup[pid].placed[fc[i]] = uid;
+  });
+  confirmSetup(pid);
+}
+function shuffle(arr){
+  for(var i=arr.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; }
+  return arr;
+}
+
+/* ============================== janken ============================== */
+var BEATS = {"gu":"choki","choki":"pa","pa":"gu"};
+var HAND_JP = {gu:"グー", choki:"チョキ", pa:"パー"};
+function jankenPick(pid, hand, fromNetwork){
+  G.janken[pid] = hand;
+  if(!fromNetwork && G.mode==="online"){
+    netSend({k:"janken", hand:hand});
+  }
+  if(!fromNetwork && pid==="p1" && G.mode==="hotseat" && !G.janken.p2){
+    G.passGateNext="janken";
+    goPhase("passgate");
+    return;
+  }
+  if(!fromNetwork && pid==="p1" && G.mode==="cpu"){
+    var hands=["gu","choki","pa"];
+    G.janken.p2 = hands[Math.floor(Math.random()*3)];
+  }
+  evaluateJanken();
+}
+function evaluateJanken(){
+  var a=G.janken.p1, b=G.janken.p2;
+  if(!a||!b) return;
+  G.janken.rounds++;
+  G.janken.result = (a===b) ? "draw" : ((BEATS[a]===b) ? "p1" : "p2");
+  render();
+}
+function jankenRetry(){
+  // in online play, retry only actually resets once BOTH sides have agreed to it, so
+  // neither side can pick a fresh hand while the other is still looking at the old draw.
+  if(G.mode==="online"){
+    G.janken.retryReady[G.mySeat] = true;
+    netSend({k:"janken-retry"});
+    if(G.janken.retryReady.p1 && G.janken.retryReady.p2){ jankenResetRound(); }
+    else { render(); }
+    return;
+  }
+  jankenResetRound();
+}
+function jankenResetRound(){
+  G.janken.p1=null; G.janken.p2=null; G.janken.result=null;
+  G.janken.retryReady={p1:false, p2:false};
+  render();
+}
+function jankenProceed(){
+  var winner = G.janken.result;
+  G.firstPlayer = winner;
+  G.turnPlayer = winner;
+  log("じゃんけんの結果、"+G.players[winner].name+"が先攻。");
+  startTurnTimer();
+  goPhase("battle");
+  if(G.mode==="cpu" && G.turnPlayer==="p2"){
+    setTimeout(cpuTakeTurn, 550);
+  }
+}
+
+/* ============================== board / combat logic ============================== */
+function neighbors8(cell){
+  var r=rowOf(cell), c=colOf(cell); var out=[];
+  for(var dr=-1;dr<=1;dr++) for(var dc=-1;dc<=1;dc++){
+    if(dr===0&&dc===0) continue;
+    var nc = cellAt(r+dr, c+dc);
+    if(nc!==-1) out.push(nc);
+  }
+  return out;
+}
+function canFuse(a,b){
+  if(a.isJoker || b.isJoker) return false;
+  if(a.isFused || b.isFused) return false;
+  return true;
+}
+function beatsValue(x,y){
+  if(x===y) return null;
+  if(x===1 && y===13) return true;
+  if(x===13 && y===1) return false;
+  return x>y;
+}
+
+function legalActionsForBoardCard(card){
+  var res = {moves:[], fuses:[], attacks:[]};
+  neighbors8(card.cell).forEach(function(nc){
+    var occ = G.board[nc];
+    if(!occ){ res.moves.push(nc); return; }
+    var oc = G.cards[occ];
+    if(oc.owner===card.owner){
+      if(canFuse(card, oc)) res.fuses.push(nc);
+    } else {
+      res.attacks.push(nc);
+    }
+  });
+  return res;
+}
+function legalDropCellsFor(pid){
+  return dropZoneCells(pid).filter(function(c){ return !G.board[c]; });
+}
+
+function sendToGraveyard(card){
+  card.loc="graveyard"; card.cell=null;
+}
+function sendToCaptured(card, capturerPid){
+  card.loc="captured"; card.owner=capturerPid; card.cell=null; card.isFused=false; card.parts=null;
+}
+
+function resolveFusedCapture(fusedCard, capturerPid){
+  var parts = fusedCard.parts;
+  parts.forEach(function(p){
+    var id = nextUid();
+    G.cards[id] = {uid:id, value:p.value, isJoker:false, owner:capturerPid, origin:p.origin, loc:"captured", cell:null, isFused:false, parts:null};
+  });
+}
+// drops a hand card (reserve or captured) onto the board; dropping from the captured
+// pool permanently spends that player's one-time captured-pool summon privilege.
+function dropCardToBoard(pid, card, cell){
+  var fromCaptured = card.loc==="captured";
+  card.loc="board"; card.cell=cell; G.board[cell]=card.uid;
+  if(fromCaptured) G.capturedSummonUsed[pid] = true;
+  log("<b>"+G.players[pid].name+"</b>: "+cardName(card)+" を打った。");
+}
+
+function removeCardFromBoard(card){
+  G.board[card.cell]=null;
+}
+
+function performMove(card, destCell){
+  removeCardFromBoard(card);
+  card.cell = destCell;
+  G.board[destCell] = card.uid;
+  log("<b>"+G.players[card.owner].name+"</b>: "+cardName(card)+" が移動。");
+}
+
+function performFuse(mover, target){
+  removeCardFromBoard(mover);
+  target.isFused = true;
+  target.parts = [ {value:mover.value, origin:mover.origin, uid:mover.uid}, {value:target.value, origin:target.origin, uid:target.uid} ];
+  target.value = null;
+  mover.loc="fused"; mover.cell=null;
+  log("<b>"+G.players[target.owner].name+"</b>: カードを合体させ "+effectiveValue(target)+" に。");
+}
+
+function performCombat(attacker, defender, destCell){
+  var mutual=false, winner=null, loser=null;
+
+  if(attacker.isJoker && defender.isJoker){
+    mutual = true;
+  } else if(attacker.isJoker){
+    winner=attacker; loser=defender;
+  } else if(defender.isJoker){
+    winner=defender; loser=attacker;
+  } else {
+    var va = effectiveValue(attacker), vb = effectiveValue(defender);
+    var r = beatsValue(va, vb);
+    if(r===null) mutual=true;
+    else if(r===true) { winner=attacker; loser=defender; }
+    else { winner=defender; loser=attacker; }
+  }
+
+  if(mutual){
+    log("<b>相打ち</b>: "+cardName(attacker)+" と "+cardName(defender)+" が互いに墓地へ。");
+    G.board[attacker.cell] = null;
+    G.board[defender.cell] = null;
+    sendToGraveyard(attacker);
+    sendToGraveyard(defender);
+    return;
+  }
+
+  var capturerPid = winner.owner;
+  log("<b>戦闘</b>: "+cardName(attacker)+" vs "+cardName(defender)+" → "+G.players[capturerPid].name+"の勝ち。");
+
+  if(loser.isJoker){
+    G.board[loser.cell]=null;
+    sendToGraveyard(loser);
+  } else if(loser.isFused){
+    resolveFusedCapture(loser, capturerPid);
+    G.board[loser.cell]=null;
+    sendToGraveyard(loser);
+    G.stats[capturerPid].captures++;
+  } else {
+    G.board[loser.cell]=null;
+    sendToCaptured(loser, capturerPid);
+    G.stats[capturerPid].captures++;
+  }
+
+  if(winner.isJoker){
+    winner.charges--;
+  }
+
+  if(winner===attacker){
+    G.board[attacker.cell]=null;
+    attacker.cell = destCell;
+    G.board[destCell]=attacker.uid;
+  }
+  // if defender wins, defender simply stays put; attacker's original cell was already cleared above via the loser-handling block
+
+  if(winner.isJoker && winner.charges<=0){
+    log("<b>"+cardName(winner)+"</b> が力を使い果たし、自陣の墓地へ。");
+    G.board[winner.cell]=null;
+    sendToGraveyard(winner);
+  }
+}
+
+function cardName(card){
+  var n = G.players[card.owner].name;
+  var v = card.isJoker ? "JOKER" : (card.isFused ? effectiveValue(card)+"(合体)" : card.value);
+  return n+"の"+v;
+}
+
+/* ============================== turn / selection ============================== */
+function clearSel(){ G.sel=null; }
+
+function onCellClick(cell){
+  if(G.phase!=="battle" || G.winner) return;
+  var occ = G.board[cell];
+  var pid = G.turnPlayer;
+  if(!isMyControllableTurn(pid)) return;
+
+  if(G.sel && G.sel.kind==="board"){
+    var card = G.cards[G.sel.uid];
+    var fromCell = card.cell;
+    var la = legalActionsForBoardCard(card);
+    if(la.moves.indexOf(cell)!==-1){
+      performMove(card, cell);
+      if(G.mode==="online") netSend({k:"action", kind:"move", from:fromCell, to:cell});
+      afterAction(); return;
+    }
+    if(la.fuses.indexOf(cell)!==-1){
+      performFuse(card, G.cards[G.board[cell]]);
+      if(G.mode==="online") netSend({k:"action", kind:"fuse", from:fromCell, to:cell});
+      afterAction(); return;
+    }
+    if(la.attacks.indexOf(cell)!==-1){
+      performCombat(card, G.cards[G.board[cell]], cell);
+      if(G.mode==="online") netSend({k:"action", kind:"attack", from:fromCell, to:cell});
+      afterAction(); return;
+    }
+    clearSel();
+    if(occ && G.cards[occ].owner===pid){ G.sel={kind:"board", uid:occ}; }
+    render();
+    return;
+  }
+  if(G.sel && (G.sel.kind==="reserve" || G.sel.kind==="captured")){
+    var dropCells = legalDropCellsFor(pid);
+    if(dropCells.indexOf(cell)!==-1){
+      var c = G.cards[G.sel.uid];
+      if(c.loc==="captured" && G.capturedSummonUsed[pid]){ clearSel(); render(); return; }
+      dropCardToBoard(pid, c, cell);
+      if(G.mode==="online") netSend({k:"action", kind:"drop", origin:c.origin, value:c.value, isJoker:c.isJoker, to:cell});
+      afterAction();
+      return;
+    }
+    clearSel(); render(); return;
+  }
+  if(occ && G.cards[occ].owner===pid){
+    G.sel={kind:"board", uid:occ};
+    render();
+  }
+}
+function onHandCardClick(kind, uid){
+  if(G.phase!=="battle" || G.winner) return;
+  var pid = G.turnPlayer;
+  if(!isMyControllableTurn(pid)) return;
+  var card = G.cards[uid];
+  if(card.owner!==pid) return;
+  if(kind==="captured" && G.capturedSummonUsed[pid]) return;
+  if(G.sel && G.sel.kind===kind && G.sel.uid===uid){ clearSel(); render(); return; }
+  G.sel = {kind:kind, uid:uid};
+  render();
+}
+
+function afterAction(){
+  clearSel();
+  checkWin();
+  if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
+  G.turnPlayer = other(G.turnPlayer);
+  G.turnCount++;
+  startTurnTimer();
+  render();
+  if(!G.winner && G.mode==="cpu" && G.turnPlayer==="p2"){
+    setTimeout(cpuTakeTurn, 550);
+  }
+}
+
+function checkWin(){
+  ["p1","p2"].forEach(function(pid){
+    var goalRow = GOAL_ROW[pid];
+    for(var c=0;c<3;c++){
+      var cellIdx = cellAt(goalRow,c);
+      var occ = G.board[cellIdx];
+      if(occ && G.cards[occ].owner===pid){
+        G.winner = pid; G.winReason="到達";
+      }
+    }
+  });
+  if(!G.winner){
+    ["p1","p2"].forEach(function(pid){
+      if(playerCardCount(pid)===0){ G.winner = other(pid); G.winReason="全滅"; }
+    });
+  }
+}
+
+/* ============================== CPU AI ============================== */
+// Runs fn() against a throwaway clone of G (cards + board only need deep copying;
+// everything else - players, setup, janken - is read-only during a battle turn so
+// it's safe to share by reference). This lets the AI reuse the exact same
+// performMove/performFuse/performCombat logic as real play to "try" a move and see
+// what the resulting position looks like, without touching the real game state.
+function withSimulatedG(fn){
+  var savedG = G;
+  var clonedCards = {};
+  Object.keys(savedG.cards).forEach(function(id){
+    var c = savedG.cards[id];
+    clonedCards[id] = {
+      uid:c.uid, value:c.value, isJoker:c.isJoker, owner:c.owner, origin:c.origin,
+      loc:c.loc, cell:c.cell, isFused:c.isFused,
+      parts: c.parts ? c.parts.map(function(p){ return {value:p.value, origin:p.origin, uid:p.uid}; }) : null,
+      charges: c.charges
+    };
+  });
+  var simG = {
+    phase:savedG.phase, mode:savedG.mode, players:savedG.players,
+    cards: clonedCards, board: savedG.board.slice(),
+    turnPlayer:savedG.turnPlayer, turnSeconds:savedG.turnSeconds, firstPlayer:savedG.firstPlayer, turnCount:savedG.turnCount,
+    setup:savedG.setup, setupActive:savedG.setupActive, passGateNext:savedG.passGateNext, janken:savedG.janken,
+    log:[], sel:null, winner:null, winReason:null,
+    stats:{p1:{captures:savedG.stats.p1.captures}, p2:{captures:savedG.stats.p2.captures}},
+    mySeat:savedG.mySeat, onlineSetupDone:savedG.onlineSetupDone, cpuLevel:savedG.cpuLevel,
+    capturedSummonUsed:{p1:savedG.capturedSummonUsed.p1, p2:savedG.capturedSummonUsed.p2}
+  };
+  G = simG;
+  var result;
+  try{ result = fn(simG); }
+  finally { G = savedG; }
+  return result;
+}
+
+function generateCandidateActions(pid){
+  var actions = [];
+  Object.keys(G.cards).forEach(function(id){
+    var card = G.cards[id];
+    if(card.loc!=="board" || card.owner!==pid) return;
+    var la = legalActionsForBoardCard(card);
+    la.moves.forEach(function(dest){ actions.push({type:"move", uid:id, dest:dest}); });
+    la.fuses.forEach(function(dest){ actions.push({type:"fuse", uid:id, dest:dest}); });
+    la.attacks.forEach(function(dest){ actions.push({type:"attack", uid:id, dest:dest}); });
+  });
+  var dropCells = legalDropCellsFor(pid);
+  if(dropCells.length){
+    Object.keys(G.cards).forEach(function(id){
+      var card = G.cards[id];
+      if(card.owner!==pid) return;
+      var eligible = card.loc==="reserve" || (card.loc==="captured" && !G.capturedSummonUsed[pid]);
+      if(!eligible) return;
+      dropCells.forEach(function(cell){ actions.push({type:"drop", uid:id, dest:cell}); });
+    });
+  }
+  return actions;
+}
+function applyCandidateAction(pid, action){
+  var card = G.cards[action.uid];
+  if(action.type==="move"){
+    performMove(card, action.dest);
+  } else if(action.type==="fuse"){
+    performFuse(card, G.cards[G.board[action.dest]]);
+  } else if(action.type==="attack"){
+    performCombat(card, G.cards[G.board[action.dest]], action.dest);
+  } else if(action.type==="drop"){
+    dropCardToBoard(pid, card, action.dest);
+  }
+}
+
+function cardPower(card){
+  if(!card) return 0;
+  if(card.isJoker) return 7 + (card.charges||0)*3.5;
+  return card.isFused ? (card.parts[0].value+card.parts[1].value) : card.value;
+}
+// static read of "how good is this position for pid" - material on board (weighted
+// by value), how far pieces have advanced, and total remaining card count.
+function evalPosition(pid){
+  var opp = other(pid);
+  if(G.winner===pid) return 100000;
+  if(G.winner===opp) return -100000;
+  var score = 0;
+  Object.keys(G.cards).forEach(function(id){
+    var c = G.cards[id];
+    if(c.loc!=="board") return;
+    var power = cardPower(c);
+    var mine = c.owner===pid;
+    var advance = mine ? (pid==="p1" ? rowOf(c.cell) : 5-rowOf(c.cell)) : 0;
+    var s = power*2 + advance*1.4;
+    score += mine ? s : -s;
+    if(mine && rowOf(c.cell)===GOAL_ROW[pid]) score += 500;
+  });
+  score += (playerCardCount(pid) - playerCardCount(opp)) * 4;
+  return score;
+}
+// would `attacker` win if it attacked `defender` right now? mirrors performCombat's
+// resolution without any of the side effects, for the AI to check risk cheaply.
+function combatOutcomeIfAttacks(attacker, defender){
+  if(attacker.isJoker && defender.isJoker) return "mutual";
+  if(attacker.isJoker) return "attackerWins";
+  if(defender.isJoker) return "defenderWins";
+  var r = beatsValue(effectiveValue(attacker), effectiveValue(defender));
+  if(r===null) return "mutual";
+  return r ? "attackerWins" : "defenderWins";
+}
+// how exposed are pid's own pieces on the current board - would any of them get
+// captured (or trade down) if the opponent simply attacked next turn?
+function hangingPenalty(pid){
+  var opp = other(pid);
+  var penalty = 0;
+  Object.keys(G.cards).forEach(function(id){
+    var c = G.cards[id];
+    if(c.loc!=="board" || c.owner!==pid) return;
+    neighbors8(c.cell).forEach(function(nc){
+      var oid = G.board[nc];
+      if(!oid) return;
+      var enemy = G.cards[oid];
+      if(enemy.owner!==opp) return;
+      var outcome = combatOutcomeIfAttacks(enemy, c);
+      if(outcome==="attackerWins"){
+        penalty += cardPower(c) * 1.8;
+      } else if(outcome==="mutual" && cardPower(c) > cardPower(enemy)){
+        penalty += (cardPower(c)-cardPower(enemy)) * 0.8;
+      }
+    });
+  });
+  return penalty;
+}
+
+// Lv.1: greedy, single-ply, barely looks past the immediate trade - easy to punish.
+function cpuScoreEasy(pid, action){
+  var card = G.cards[action.uid];
+  var score = Math.random()*3;
+  if(action.type==="move"){
+    var progress = pid==="p2" ? (rowOf(card.cell)-rowOf(action.dest)) : (rowOf(action.dest)-rowOf(card.cell));
+    score += progress*3;
+    if(rowOf(action.dest)===GOAL_ROW[pid]) score += 1000;
+  } else if(action.type==="fuse"){
+    score += 4;
+  } else if(action.type==="attack"){
+    var def = G.cards[G.board[action.dest]];
+    if(card.isJoker) score += 50 + Math.random();
+    else if(def.isJoker) score += -30;
+    else {
+      var r = beatsValue(effectiveValue(card), effectiveValue(def));
+      score += r===true ? 10 + effectiveValue(def)*1.2 + Math.random() : (r===null ? -2+Math.random() : -20);
+    }
+    if(rowOf(action.dest)===GOAL_ROW[pid]) score += 1000;
+  } else if(action.type==="drop"){
+    score += 1 + (card.isJoker?3:0);
+  }
+  return score;
+}
+// Lv.2: simulates its own move and scores the resulting position, penalising spots
+// where the piece it just moved would be hanging for the opponent to take.
+function cpuScoreNormal(pid, action){
+  var score = withSimulatedG(function(){
+    applyCandidateAction(pid, action);
+    checkWin();
+    return evalPosition(pid) - hangingPenalty(pid);
+  });
+  return score + Math.random()*1.5;
+}
+// Lv.3: full depth-3 minimax - my move, their best reply, then credit for my best
+// follow-up after that. This is what makes it actually plan rather than just avoid
+// the single worst immediate outcome: a move that looks risky one ply out but has a
+// strong comeback two plies out now scores correctly instead of being avoided.
+function cpuScoreHard(pid, action){
+  return withSimulatedG(function(simG){
+    applyCandidateAction(pid, action);
+    checkWin();
+    if(simG.winner===pid) return 100000;
+    if(simG.winner===other(pid)) return -100000;
+    var worstForMe = minimaxReply(pid, other(pid), 2);
+    return worstForMe + Math.random()*0.15;
+  });
+}
+// alternates perspective each ply: `mover` is who acts at this node, `forPid` is
+// whose position we're ultimately scoring. depthLeft counts remaining plies to search.
+function minimaxReply(forPid, mover, depthLeft){
+  var actions = generateCandidateActions(mover);
+  var maximizing = (mover===forPid);
+  if(!actions.length){
+    return evalPosition(forPid) - hangingPenalty(forPid)*0.6;
+  }
+  var best = null;
+  actions.forEach(function(action){
+    var score = withSimulatedG(function(simG){
+      applyCandidateAction(mover, action);
+      checkWin();
+      if(simG.winner===forPid) return 100000;
+      if(simG.winner===other(forPid)) return -100000;
+      if(depthLeft<=1){
+        return evalPosition(forPid) - hangingPenalty(forPid)*0.6;
+      }
+      return minimaxReply(forPid, other(mover), depthLeft-1);
+    });
+    if(best===null || (maximizing ? score>best : score<best)) best = score;
+  });
+  return best;
+}
+
+function cpuChooseAction(pid, level){
+  var actions = generateCandidateActions(pid);
+  if(!actions.length) return null;
+  var scorer = level===1 ? cpuScoreEasy : (level===3 ? cpuScoreHard : cpuScoreNormal);
+  var best=null, bestScore=-Infinity;
+  actions.forEach(function(action){
+    var s = scorer(pid, action);
+    if(s>bestScore){ bestScore=s; best=action; }
+  });
+  return best;
+}
+
+function cpuTakeTurn(){
+  if(G.winner) return;
+  var pid="p2";
+  var action = cpuChooseAction(pid, G.cpuLevel||2);
+  if(!action){ G.turnPlayer="p1"; G.turnCount++; startTurnTimer(); render(); return; }
+  applyCandidateAction(pid, action);
+  checkWin();
+  if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
+  G.turnPlayer="p1"; G.turnCount++;
+  startTurnTimer();
+  render();
+}
+
+/* ============================== phase control ============================== */
+function goPhase(p){
+  G.phase=p;
+  if(p==="result" && G.mode==="online"){
+    maybeSendSnapshot();   // push the final board to spectators before we drop the link
+    netDisconnect();
+  }
+  render();
+}
+var CPU_LEVEL_LABEL = {1:"弱い", 2:"普通", 3:"強い"};
+function startMode(mode, cpuLevel){
+  clearTurnTimer();
+  netDisconnect();
+  G = newGame();
+  G.mode = mode;
+  if(mode==="hotseat"){
+    G.players.p2.name="対戦相手";
+  } else {
+    G.cpuLevel = cpuLevel || 2;
+    G.players.p2.name = "CPU (" + CPU_LEVEL_LABEL[G.cpuLevel] + ")";
+  }
+  G.setupActive="p1";
+  goPhase("setup");
+}
+function startOnlineFlow(){
+  clearTurnTimer();
+  netDisconnect();
+  G = newGame();
+  G.mode = "online";
+  goPhase("online-menu");
+}
+
+/* ============================== rendering ============================== */
+var appEl = document.getElementById("app");
+
+function cardEl(card, opts){
+  opts = opts || {};
+  var cls = "card";
+  if(card.owner) cls += " "+card.owner;
+  if(opts.extra) cls += " "+opts.extra;
+  if(card.isFused) cls += " fused";
+  if(opts.back) cls = "card back "+(opts.extra||"");
+  if(opts.back){
+    return '<div class="'+cls+'"></div>';
+  }
+  if(card.isJoker){
+    var pips = "";
+    var charges = card.charges===undefined?2:card.charges;
+    for(var i=0;i<2;i++) pips += (i<charges? "●":"○");
+    return '<div class="'+cls+' joker" data-uid="'+card.uid+'">'+
+      '<div class="pip">'+(G.players[card.owner]?G.players[card.owner].suit:"")+'</div>'+
+      '<div class="center">JOKER</div>'+
+      '<div class="charges">'+pips+'</div></div>';
+  }
+  var val = card.isFused ? effectiveValue(card) : card.value;
+  var suit = G.players[card.owner] ? G.players[card.owner].suit : "";
+  return '<div class="'+cls+'" data-uid="'+card.uid+'">'+
+    '<div class="pip">'+val+' '+suit+'</div>'+
+    '<div class="center">'+val+'</div>'+
+    '<div class="pip" style="align-self:flex-end;transform:rotate(180deg)">'+val+' '+suit+'</div></div>';
+}
+
+function render(){
+  var html = "";
+  html += renderTitle();
+  html += renderMode();
+  html += renderCpuLevel();
+  html += renderOnlineMenu();
+  html += renderOnlineCreate();
+  html += renderOnlineJoin();
+  html += renderOnlineSetupWait();
+  html += renderSpecWait();
+  html += renderSetup();
+  html += renderPassgate();
+  html += renderJanken();
+  html += renderBattle();
+  html += renderResult();
+  appEl.innerHTML = html;
+  ["title","mode","cpu-level","online-menu","online-create","online-join","online-setup-wait","spec-wait","setup","passgate","janken","battle","result"].forEach(function(p){
+    var el = document.getElementById("screen-"+p);
+    if(el) el.classList.toggle("active", G.phase===p);
+  });
+  document.body.classList.toggle("phase-battle", G.phase==="battle");
+  bindEvents();
+  maybeSendSnapshot();
+}
+
+function renderTitle(){
+  return '<section class="screen" id="screen-title">'+
+    '<div class="title-mark">'+
+      '<div class="title-suits">♠ ♥ ♣ ♦</div>'+
+      '<h1>JACKING</h1>'+
+    '</div>'+
+    '<p class="title-tagline">トランプ13枚とジョーカーを使い、将棋のように前へ進める対人ストラテジー。奪う、合体する、ジョーカーを使い減らす — 読み合いの一局。</p>'+
+    '<div class="title-actions">'+
+      '<button class="btn primary" data-action="goto-mode">はじめる</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderMode(){
+  return '<section class="screen" id="screen-mode">'+
+    '<div class="screen-head"><span class="eyebrow">Step 1</span><h2>対戦方法選択</h2><p>まずは対戦の形式を選んでください。</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="mode-grid">'+
+        '<div class="mode-card panel" data-action="goto-cpu-level">'+
+          '<span class="tag">1P</span><h3>CPUと対戦</h3><p>AIを相手に、ひとりでルールを試せます。強さを選べます。</p>'+
+        '</div>'+
+        '<div class="mode-card panel" data-action="start-mode" data-mode="hotseat">'+
+          '<span class="tag">2P</span><h3>対人戦(同じ画面)</h3><p>同じ端末を交代しながら2人で対戦します。設定中はお互いの手を見ないようにしてください。</p>'+
+        '</div>'+
+        '<div class="mode-card panel" data-action="start-online">'+
+          '<span class="tag">NET</span><h3>オンライン対戦</h3><p>部屋を作って、離れた相手とインターネット経由で対戦します。</p>'+
+        '</div>'+
+      '</div>'+
+      '<button class="btn ghost" data-action="goto-title">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderCpuLevel(){
+  if(G.phase!=="cpu-level") return '<section class="screen" id="screen-cpu-level"></section>';
+  return '<section class="screen" id="screen-cpu-level">'+
+    '<div class="screen-head"><span class="eyebrow">Step 1</span><h2>CPUの強さ</h2><p>難易度を選んでください。</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="mode-grid" style="max-width:52rem;">'+
+        '<div class="mode-card panel" data-action="start-cpu" data-level="1">'+
+          '<span class="tag">Lv.1</span><h3>弱い</h3><p>目の前の一手だけを見て指します。ルールに慣れていない方向け。</p>'+
+        '</div>'+
+        '<div class="mode-card panel" data-action="start-cpu" data-level="2">'+
+          '<span class="tag">Lv.2</span><h3>普通</h3><p>損得と、指した後に取られやすくないかを考えて指します。</p>'+
+        '</div>'+
+        '<div class="mode-card panel" data-action="start-cpu" data-level="3">'+
+          '<span class="tag">Lv.3</span><h3>強い</h3><p>あなたの最善の返し手まで先読みして指します。</p>'+
+        '</div>'+
+      '</div>'+
+      '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderOnlineMenu(){
+  if(G.phase!=="online-menu") return '<section class="screen" id="screen-online-menu"></section>';
+  return '<section class="screen" id="screen-online-menu">'+
+    '<div class="screen-head"><span class="eyebrow">Online</span><h2>オンライン対戦</h2><p>部屋を作るか、もらった部屋IDとパスワードで入室してください。</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="mode-grid" style="max-width:36rem;">'+
+        '<div class="mode-card panel" data-action="goto-online-create"><h3>部屋を作る</h3><p>あなたがホストになり、部屋IDとパスワードを相手に伝えます。</p></div>'+
+        '<div class="mode-card panel" data-action="goto-online-join"><h3>部屋に入る</h3><p>もらった部屋IDとパスワードを入力して参加します。</p></div>'+
+      '</div>'+
+      '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderOnlineCreate(){
+  if(G.phase!=="online-create") return '<section class="screen" id="screen-online-create"></section>';
+  if(Net.room){
+    var share = shareUrl();
+    return '<section class="screen" id="screen-online-create">'+
+      '<div class="screen-head"><span class="eyebrow">Online &middot; Host</span><h2>参加を待っています</h2>'+
+      '<p>部屋IDとパスワードを伝えてください。最初の1人が対戦相手、それ以降に入った人は観戦者になります。</p></div>'+
+      '<div class="screen-body">'+
+        '<div class="panel" style="padding:1.6rem 2.2rem; width:100%; max-width:24rem;">'+
+          '<div class="field small"><label>部屋ID</label></div>'+
+          '<div class="room-code">'+Net.room+'</div>'+
+          '<div class="field small" style="margin-top:.6rem;"><label>パスワード</label></div>'+
+          '<div class="room-code" style="font-size:1.3rem;">'+escapeHtml(Net.pass)+'</div>'+
+          (share
+            ? '<div class="field small" style="margin-top:.8rem;"><label>共有リンク</label>'+
+              '<input type="text" readonly onclick="this.select()" value="'+escapeHtml(share)+'"></div>'
+            : '')+
+        '</div>'+
+        '<div class="online-status"><span class="status-dot live"></span>接続中 &mdash; 対戦相手の入室を待っています…'+
+          (Net.spectators?(' (観戦 '+Net.spectators+'人)'):'')+'</div>'+
+        '<button class="btn ghost" data-action="online-cancel">キャンセル</button>'+
+      '</div>'+
+    '</section>';
+  }
+  return '<section class="screen" id="screen-online-create">'+
+    '<div class="screen-head"><span class="eyebrow">Online &middot; Host</span><h2>部屋を作る</h2><p>パスワードを決めて部屋を作成してください。</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="online-form">'+
+        '<div class="field"><label>パスワード</label><input type="text" id="createPassInput" placeholder="例: sakura123" maxlength="32"></div>'+
+        serverUrlField("createServerInput")+
+        '<div class="net-error">'+(Net.error||"")+'</div>'+
+        '<button class="btn primary" data-action="online-do-create"'+(Net.connecting?" disabled":"")+'>'+(Net.connecting?"接続中…":"部屋を作る")+'</button>'+
+      '</div>'+
+      '<button class="btn ghost" data-action="goto-online-menu">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderOnlineJoin(){
+  if(G.phase!=="online-join") return '<section class="screen" id="screen-online-join"></section>';
+  if(Net.room && Net.seat==="p2" && !G.mySeat){
+    return '<section class="screen" id="screen-online-join">'+
+      '<div class="screen-head"><span class="eyebrow">Online &middot; Guest</span><h2>入室しました</h2><p>ホストの準備ができ次第、自動的に開始します。</p></div>'+
+      '<div class="screen-body">'+
+        '<div class="online-status"><span class="status-dot live"></span>接続中…</div>'+
+        '<button class="btn ghost" data-action="online-cancel">キャンセル</button>'+
+      '</div>'+
+    '</section>';
+  }
+  return '<section class="screen" id="screen-online-join">'+
+    '<div class="screen-head"><span class="eyebrow">Online &middot; Guest</span><h2>部屋に入る</h2><p>部屋IDとパスワードを入力してください。対戦枠が空いていれば対戦相手として、埋まっていれば観戦者として参加します。</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="online-form">'+
+        '<div class="field"><label>部屋ID</label><input type="text" id="joinRoomInput" placeholder="例: 7K3PXQ" maxlength="6" style="text-transform:uppercase;" value="'+escapeHtml(pendingJoinRoom||"")+'"></div>'+
+        '<div class="field"><label>パスワード</label><input type="text" id="joinPassInput" placeholder="ホストから聞いたパスワード" maxlength="32"></div>'+
+        serverUrlField("joinServerInput")+
+        '<div class="net-error">'+(Net.error||"")+'</div>'+
+        '<button class="btn primary" data-action="online-do-join"'+(Net.connecting?" disabled":"")+'>'+(Net.connecting?"接続中…":"入室する")+'</button>'+
+      '</div>'+
+      '<button class="btn ghost" data-action="goto-online-menu">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function serverUrlField(id){
+  var val = Net.serverUrl || netDefaultServerUrl();
+  return '<div class="field small"><label>中継サーバーURL</label><input type="text" id="'+id+'" placeholder="wss://your-relay.example.com" value="'+escapeHtml(val)+'"></div>';
+}
+
+// a link that lands straight on the join form with the room prefilled, for
+// handing to spectators (only meaningful when the page is served over http/s)
+function shareUrl(){
+  if(!(location.protocol==="http:"||location.protocol==="https:") || !Net.room) return "";
+  return location.origin + location.pathname + "?room=" + Net.room;
+}
+
+function renderOnlineSetupWait(){
+  if(G.phase!=="online-setup-wait") return '<section class="screen" id="screen-online-setup-wait"></section>';
+  return '<section class="screen" id="screen-online-setup-wait">'+
+    '<div class="janken-wait">'+
+      '<span class="eyebrow">Online</span>'+
+      '<h2>相手の配置を待っています…</h2>'+
+      '<div class="online-status"><span class="status-dot live"></span>あなたの配置は完了しました</div>'+
+      '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderSpecWait(){
+  if(G.phase!=="spec-wait") return '<section class="screen" id="screen-spec-wait"></section>';
+  var srcPhase = G.__srcPhase || "";
+  var msg = "まもなく対戦が始まります…";
+  if(srcPhase==="setup" || srcPhase==="online-setup-wait" || srcPhase==="passgate") msg = "両プレイヤーが初期配置中です…";
+  else if(srcPhase==="janken") msg = "先攻・後攻を決めています…";
+  return '<section class="screen" id="screen-spec-wait">'+
+    '<div class="janken-wait">'+
+      '<span class="eyebrow">Spectating</span>'+
+      '<h2>観戦者として参加中</h2>'+
+      '<div class="online-status"><span class="status-dot live"></span>'+msg+'</div>'+
+      '<div style="font-size:.8rem;color:var(--ink-faint)">部屋 '+escapeHtml(Net.room||"")+' &middot; 観戦 '+Net.spectators+'人</div>'+
+      '<button class="btn ghost" data-action="goto-title">観戦をやめる</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function escapeHtml(s){
+  return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+    return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c];
+  });
+}
+
+function renderSetup(){
+  var pid = G.setupActive;
+  if(G.phase!=="setup") return '<section class="screen" id="screen-setup"></section>';
+  var p = G.players[pid];
+  var deck = deckCards(pid);
+  var placedCount = setupPlaceCount(pid);
+  var n = deck.length;
+  var fan = deck.map(function(c, i){
+    var placed = isPlacedInSetup(pid, c.uid);
+    var rot = (i-(n-1)/2) * 5;
+    // a smooth circular arc (cosine) instead of a straight linear ramp - the old
+    // abs()-based lift had a sharp crease right at the centre where the slope
+    // suddenly reversed; this rises and falls smoothly across the whole fan.
+    var lift = -(1-Math.cos(rot*Math.PI/180)) * 130;
+    var chosen = G.sel && G.sel.kind==="setup-arm" && G.sel.uid===c.uid;
+    var extra = "selectable"+(placed?" placed":"")+(chosen?" chosen":"");
+    var style = 'style="transform:rotate('+rot+'deg) translateY('+lift+'px)"';
+    return '<div '+style+' data-action="'+(placed?"":"arm-setup")+'" data-uid="'+c.uid+'">'+cardEl(c,{extra:extra})+'</div>';
+  }).join("");
+
+  var grid = "";
+  var rowsTopToBottom = TERRITORY[pid].slice();
+  if(pid==="p1") rowsTopToBottom.reverse(); // nearest-to-player row rendered at the bottom for both sides
+  rowsTopToBottom.forEach(function(r){
+    for(var c=0;c<3;c++){
+      var cell = cellAt(r,c);
+      var isFront = frontCells(pid).indexOf(cell)!==-1;
+      var uid = G.setup[pid].placed[cell];
+      var inner = uid ? cardEl(G.cards[uid],{}) : "";
+      var cls = "setup-cell "+(isFront?"front":"back-row");
+      grid += '<div class="'+cls+'" data-action="'+(isFront?"setup-cell":"")+'" data-cell="'+cell+'">'+inner+'</div>';
+    }
+  });
+
+  return '<section class="screen" id="screen-setup">'+
+    '<div class="screen-head"><span class="eyebrow">Step 2 &middot; '+p.name+'</span><h2>初期コマ選択・初期位置選択</h2>'+
+    '<p>14枚のうち6枚を選び、自陣手前6マスの好きな位置に伏せて配置してください。('+placedCount+' / 6)</p></div>'+
+    '<div class="screen-body">'+
+      '<div class="fan">'+fan+'</div>'+
+      '<div class="setup-wrap">'+
+        '<div class="setup-grid">'+grid+'</div>'+
+        '<div class="setup-side"><b>配置のしかた</b><br>1. 下の扇からカードを選ぶ<br>2. 実線のマス(手前2列)をクリックして配置<br>3. 配置済みマスをクリックすると戻せます<br><br>中央寄りの列は空けたまま。ここに置かなかった8枚は「持ち駒」として対戦中に打てます。</div>'+
+      '</div>'+
+      '<button class="btn primary" data-action="confirm-setup" '+(placedCount===6?"":"disabled")+'>配置を確定</button>'+
+      '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderPassgate(){
+  if(G.phase!=="passgate") return '<section class="screen" id="screen-passgate"></section>';
+  var msg = G.passGateNext==="setup"
+    ? (G.players.p1.name+"の配置が完了しました。端末を"+G.players.p2.name+"に渡してください。相手の配置は見ないでください。")
+    : (G.players.p1.name+"がじゃんけんの手を選びました。端末を"+G.players.p2.name+"に渡してください。");
+  return '<section class="screen" id="screen-passgate">'+
+    '<div class="pass-gate panel" style="padding:2.4rem 2.6rem;">'+
+      '<span class="eyebrow">Pass Device</span>'+
+      '<p style="max-width:26rem;line-height:1.8;">'+msg+'</p>'+
+      '<button class="btn primary" data-action="passgate-continue">'+G.players.p2.name+'です。続ける</button>'+
+      '<div style="margin-top:.9rem;"><button class="btn ghost small" data-action="back-to-mode">戻る</button></div>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderJanken(){
+  if(G.phase!=="janken") return '<section class="screen" id="screen-janken"></section>';
+  var hands=["gu","choki","pa"];
+
+  if(G.janken.result){
+    var a=G.janken.p1, b=G.janken.p2;
+    var isDraw = G.janken.result==="draw";
+    var resultText = isDraw ? "あいこ" : (G.players[G.janken.result].name+"の勝ち — 先攻になります");
+    return '<section class="screen" id="screen-janken">'+
+      '<div class="screen-head"><span class="eyebrow">Step 3</span><h2>先攻・後攻決め</h2></div>'+
+      '<div class="screen-body">'+
+        '<div class="janken-reveal">'+
+          '<div class="janken-hand-card"><div class="jk-label">'+G.players.p1.name+'</div><div class="hand-glyph">'+HAND_JP[a]+'</div></div>'+
+          '<div class="jk-vs">VS</div>'+
+          '<div class="janken-hand-card"><div class="jk-label">'+G.players.p2.name+'</div><div class="hand-glyph">'+HAND_JP[b]+'</div></div>'+
+        '</div>'+
+        '<div class="janken-result-text'+(isDraw?" draw":"")+'">'+resultText+'</div>'+
+        (isDraw
+          ? (G.mode==="online" && G.janken.retryReady[G.mySeat]
+              ? '<div class="online-status"><span class="status-dot live"></span>相手の再挑戦を待っています…</div>'
+              : '<button class="btn primary" data-action="janken-retry">もう一度</button>')
+          : '<button class="btn primary" data-action="janken-proceed">対戦開始</button>')+
+        '<div style="margin-top:1rem;"><button class="btn ghost" data-action="back-to-mode">戻る</button></div>'+
+      '</div>'+
+    '</section>';
+  }
+
+  if(G.mode==="online"){
+    var mySeat = G.mySeat;
+    if(G.janken[mySeat]){
+      return '<section class="screen" id="screen-janken">'+
+        '<div class="janken-wait">'+
+          '<span class="eyebrow">Step 3</span>'+
+          '<h2>相手の選択を待っています…</h2>'+
+          '<div class="online-status"><span class="status-dot live"></span>あなたは「'+HAND_JP[G.janken[mySeat]]+'」を選びました</div>'+
+          '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+        '</div>'+
+      '</section>';
+    }
+    var onlineBtns = hands.map(function(h){
+      return '<button class="hand-btn" data-action="janken-pick" data-hand="'+h+'" data-pid="'+mySeat+'"><span class="hand-glyph">'+HAND_JP[h]+'</span></button>';
+    }).join("");
+    return '<section class="screen" id="screen-janken">'+
+      '<div class="screen-head"><span class="eyebrow">Step 3</span><h2>先攻・後攻決め</h2><p>じゃんけんで先攻を決めます。手を選んでください。</p></div>'+
+      '<div class="screen-body"><div class="hand-choices">'+onlineBtns+'</div>'+
+        '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+      '</div>'+
+    '</section>';
+  }
+
+  var showFor = G.janken.p1===null ? "p1" : "p2";
+  if(G.mode==="cpu") showFor="p1";
+  var name = G.players[showFor].name;
+  var btns = hands.map(function(h){
+    return '<button class="hand-btn" data-action="janken-pick" data-hand="'+h+'" data-pid="'+showFor+'"><span class="hand-glyph">'+HAND_JP[h]+'</span></button>';
+  }).join("");
+  return '<section class="screen" id="screen-janken">'+
+    '<div class="screen-head"><span class="eyebrow">Step 3</span><h2>先攻・後攻決め</h2><p>じゃんけんで先攻を決めます。'+name+'、手を選んでください。</p></div>'+
+    '<div class="screen-body"><div class="hand-choices">'+btns+'</div>'+
+      '<button class="btn ghost" data-action="back-to-mode">戻る</button>'+
+    '</div>'+
+  '</section>';
+}
+
+function renderSideCol(pid){
+  var reserve = Object.keys(G.cards).filter(function(id){var c=G.cards[id]; return c.owner===pid && c.loc==="reserve";}).map(function(id){return G.cards[id];});
+  // "捕獲したカード" is a single pool-wide privilege, not per-card: pid may drop ONE card
+  // from this whole pool over the course of the game. The instant they do, every other
+  // card still sitting here (now or captured later) locks up for good.
+  var captured = Object.keys(G.cards).filter(function(id){var c=G.cards[id]; return c.owner===pid && c.loc==="captured";}).map(function(id){return G.cards[id];});
+  var capturedLocked = G.capturedSummonUsed[pid];
+  var grave = Object.keys(G.cards).filter(function(id){var c=G.cards[id]; return c.origin===pid && c.loc==="graveyard";}).length;
+
+  // reserve values are secret: hide the CPU's reserve always; in hotseat hide whichever
+  // side is not the currently-active player (the passive player shouldn't be peeking);
+  // in online play always hide the remote peer's reserve, regardless of whose turn it is.
+  var isHidden = (G.mode==="cpu" && pid==="p2")
+    || (G.mode==="hotseat" && pid!==G.turnPlayer)
+    || (G.mode==="online" && !isSpectator() && pid!==G.mySeat);
+  var reserveHtml;
+  if(isHidden){
+    reserveHtml = '<div class="reserve-back-pile">'+cardEl({},{back:true})+'<span class="count-badge">&times;'+reserve.length+'</span></div>';
+  } else {
+    var reserveUsable = pid===G.turnPlayer && isMyControllableTurn(pid);
+    reserveHtml = '<div class="mini-row">'+reserve.map(function(c){
+      var sel = G.sel && G.sel.kind==="reserve" && G.sel.uid===c.uid;
+      return '<div class="mini-card" data-action="'+(reserveUsable?"pick-hand":"")+'" data-kind="reserve" data-uid="'+c.uid+'">'+cardEl(c,{extra:(reserveUsable?"selectable":"")+" mini-card"+(sel?" chosen":"")})+'</div>';
+    }).join("")+'</div>';
+  }
+  var capturedHtml = '<div class="mini-row">'+
+    captured.map(function(c){
+      var canUse = !capturedLocked && pid===G.turnPlayer && isMyControllableTurn(pid);
+      var sel = G.sel && G.sel.kind==="captured" && G.sel.uid===c.uid;
+      var lockedCls = capturedLocked ? " spent" : "";
+      var label = capturedLocked ? '<span class="spent-label">使用<br>済み</span>' : "";
+      return '<div class="mini-card'+lockedCls+'" data-action="'+(canUse?"pick-hand":"")+'" data-kind="captured" data-uid="'+c.uid+'">'+cardEl(c,{extra:(canUse?"selectable":"")+" mini-card"+(sel?" chosen":"")})+label+'</div>';
+    }).join("")+
+  '</div>'+(captured.length?"":'<div style="font-size:.75rem;color:var(--ink-faint)">なし</div>');
+
+  return '<div class="side-col">'+
+    '<div class="side-block panel"><h4>持ち駒</h4>'+reserveHtml+'</div>'+
+    '<div class="side-block panel"><h4>捕獲したカード'+(capturedLocked?' <span style="color:var(--ink-faint);text-transform:none;letter-spacing:0;">(使用済み)</span>':'')+'</h4>'+capturedHtml+'</div>'+
+    '<div class="side-block panel"><h4>墓地</h4><div class="count-badge">'+grave+'</div></div>'+
+  '</div>';
+}
+
+function renderBattle(){
+  if(G.phase!=="battle") return '<section class="screen" id="screen-battle"></section>';
+  var cur = G.turnPlayer;
+  var boardHtml = "";
+  for(var r=5; r>=0; r--){
+    for(var c=0;c<3;c++){
+      var cell = cellAt(r,c);
+      var zone = TERRITORY.p1.indexOf(r)!==-1 ? "zone-p1":"zone-p2";
+      var occ = G.board[cell];
+      var inner = occ ? cardEl(G.cards[occ],{}) : "";
+      var cls = "cell "+zone;
+      if(G.sel && G.sel.kind==="board"){
+        var card = G.cards[G.sel.uid];
+        if(card.cell===cell) cls += " selected";
+        var la = legalActionsForBoardCard(card);
+        if(la.moves.indexOf(cell)!==-1) cls += " legal-move";
+        if(la.fuses.indexOf(cell)!==-1) cls += " legal-fuse";
+        if(la.attacks.indexOf(cell)!==-1) cls += " legal-attack";
+      }
+      if(G.sel && (G.sel.kind==="reserve"||G.sel.kind==="captured")){
+        if(legalDropCellsFor(cur).indexOf(cell)!==-1) cls += " legal-drop";
+      }
+      boardHtml += '<div class="'+cls+'" data-action="cell-click" data-cell="'+cell+'">'+inner+'</div>';
+    }
+  }
+
+  var hintText = "駒をタップして移動・戦闘・合体先を選ぶか、持ち駒/捕獲札をタップして打つマスを選んでください。";
+  if(G.mode==="cpu" && cur==="p2") hintText = "CPUが考え中です…";
+  if(G.mode==="online" && !isSpectator() && cur!==G.mySeat) hintText = "相手の番です。相手の操作を待っています…";
+  if(isSpectator()) hintText = "観戦中 — "+G.players[cur].name+"の手番を見ています。";
+
+  var logHtml = G.log.slice(0,8).map(function(l){ return '<div class="log-line">'+l+'</div>'; }).join("");
+
+  return '<section class="screen" id="screen-battle">'+
+    '<div class="battle-top">'+
+      '<div class="turn-pill"><span class="turn-dot" style="background:var('+G.players[cur].colorVar+')"></span>'+G.players[cur].name+'の番 <span class="mono" style="color:var(--ink-faint);font-size:.75rem;">Turn '+G.turnCount+'</span></div>'+
+      '<div class="timer-chip'+(G.turnSeconds<=10?" low":"")+'"><span class="mono">'+G.turnSeconds+'</span><span class="timer-unit">秒</span></div>'+
+      '<div class="battle-top-actions">'+
+        ((isSpectator() || Net.spectators>0) ? '<span class="turn-pill" style="font-size:.78rem;color:var(--ink-soft)">👁 観戦 '+Net.spectators+'人</span>' : '')+
+        '<button class="btn small ghost" data-action="open-rules">ルール</button>'+
+        (isSpectator()
+          ? '<button class="btn small ghost" data-action="goto-title">観戦をやめる</button>'
+          : '<button class="btn small ghost" data-action="open-confirm-title">中断する</button>')+
+      '</div>'+
+    '</div>'+
+    '<div class="battle-layout">'+
+      renderSideCol("p1")+
+      '<div class="board-wrap">'+
+        '<span class="goal-row-hint">上段: '+G.players.p2.name+'陣地(奥へ進むと'+G.players.p1.name+'の勝ち)</span>'+
+        '<div class="board">'+boardHtml+'</div>'+
+        '<span class="goal-row-hint">下段: '+G.players.p1.name+'陣地(奥へ進むと'+G.players.p2.name+'の勝ち)</span>'+
+        '<div class="action-hint">'+hintText+'</div>'+
+      '</div>'+
+      renderSideCol("p2")+
+    '</div>'+
+    '<div class="log-panel panel"><h4>ログ</h4>'+logHtml+'</div>'+
+  '</section>';
+}
+
+function renderResult(){
+  if(G.phase!=="result") return '<section class="screen" id="screen-result"></section>';
+  var w = G.winner;
+  return '<section class="screen" id="screen-result">'+
+    '<div class="result-banner">'+
+      '<span class="eyebrow">Result</span>'+
+      '<h2>'+G.players[w].name+'の勝利</h2>'+
+      '<p style="color:var(--ink-soft)">勝因: '+(G.winReason==="到達"? "相手陣地の最奥マスに到達":"相手のカードを全滅させた")+'</p>'+
+    '</div>'+
+    '<div class="screen-body">'+
+      '<div class="result-stats">'+
+        '<div class="stat-card panel"><div class="num">'+G.turnCount+'</div><div class="lbl">総ターン数</div></div>'+
+        '<div class="stat-card panel"><div class="num">'+G.stats.p1.captures+' / '+G.stats.p2.captures+'</div><div class="lbl">捕獲数(P1/P2)</div></div>'+
+      '</div>'+
+      '<div class="result-actions">'+
+        (G.mode==="online"
+          ? '<button class="btn primary" data-action="goto-title">タイトルに戻る</button>'
+          : '<button class="btn primary" data-action="start-mode" data-mode="'+G.mode+'" data-level="'+G.cpuLevel+'">もう一度やる</button>'+
+            '<button class="btn ghost" data-action="goto-title">タイトルに戻る</button>')+
+      '</div>'+
+    '</div>'+
+  '</section>';
+}
+
+/* ============================== events ============================== */
+function bindEvents(){
+  appEl.querySelectorAll("[data-action]").forEach(function(el){
+    var action = el.getAttribute("data-action");
+    if(!action) return;
+    el.addEventListener("click", function(e){
+      handleAction(action, el, e);
+    });
+  });
+}
+
+function handleAction(action, el){
+  switch(action){
+    case "goto-mode": goPhase("mode"); break;
+    case "goto-cpu-level": goPhase("cpu-level"); break;
+    case "goto-title": clearTurnTimer(); netDisconnect(); hidePeerLeftBanner(); G = newGame(); render(); break;
+    // used by every screen past mode-select: abandons whatever match/connection is
+    // in progress and lands back on mode-select, not the title screen.
+    case "back-to-mode": clearTurnTimer(); netDisconnect(); hidePeerLeftBanner(); G = newGame(); goPhase("mode"); break;
+    case "open-confirm-title": document.getElementById("confirmModal").classList.add("open"); break;
+    case "open-rules": openRulesModal(); break;
+    case "start-mode": startMode(el.getAttribute("data-mode"), Number(el.getAttribute("data-level"))||G.cpuLevel); break;
+    case "start-cpu": startMode("cpu", Number(el.getAttribute("data-level"))); break;
+    case "start-online": startOnlineFlow(); break;
+    case "goto-online-menu": netDisconnect(); goPhase("online-menu"); break;
+    case "goto-online-create": Net.error=""; goPhase("online-create"); break;
+    case "goto-online-join": Net.error=""; goPhase("online-join"); break;
+    case "online-cancel": netDisconnect(); goPhase("online-menu"); break;
+    case "online-do-create": {
+      var passInput = document.getElementById("createPassInput");
+      var urlInput = document.getElementById("createServerInput");
+      var pass = passInput ? passInput.value.trim() : "";
+      var url = urlInput ? urlInput.value.trim() : "";
+      Net.serverUrl = url; // keep whatever was typed even if validation fails below
+      if(!url){ Net.error = "中継サーバーURLを入力してください。"; render(); break; }
+      if(!pass){ Net.error = "パスワードを入力してください。"; render(); break; }
+      netCreateRoom(url, pass);
+      render();
+      break;
+    }
+    case "online-do-join": {
+      var roomInput = document.getElementById("joinRoomInput");
+      var jpassInput = document.getElementById("joinPassInput");
+      var jurlInput = document.getElementById("joinServerInput");
+      var room = roomInput ? roomInput.value.trim() : "";
+      var jpass = jpassInput ? jpassInput.value.trim() : "";
+      var jurl = jurlInput ? jurlInput.value.trim() : "";
+      Net.serverUrl = jurl;
+      if(!jurl){ Net.error = "中継サーバーURLを入力してください。"; render(); break; }
+      if(!room){ Net.error = "部屋IDを入力してください。"; render(); break; }
+      netJoinRoom(jurl, room, jpass);
+      render();
+      break;
+    }
+    case "arm-setup": armCardForSetup(G.setupActive, el.getAttribute("data-uid")); render(); break;
+    case "setup-cell":
+      var cell = Number(el.getAttribute("data-cell"));
+      if(G.sel && G.sel.kind==="setup-arm"){
+        placeSetupCard(G.setupActive, cell);
+      } else if(G.setup[G.setupActive].placed[cell]){
+        unplaceSetupCell(G.setupActive, cell);
+      }
+      render();
+      break;
+    case "confirm-setup": confirmSetup(G.setupActive); render(); break;
+    case "passgate-continue":
+      if(G.passGateNext==="setup"){ G.setupActive="p2"; G.phase="setup"; }
+      else { G.phase="janken"; }
+      G.passGateNext=null;
+      render();
+      break;
+    case "janken-pick": jankenPick(el.getAttribute("data-pid"), el.getAttribute("data-hand")); render(); break;
+    case "janken-retry": jankenRetry(); break;
+    case "janken-proceed": jankenProceed(); break;
+    case "cell-click": onCellClick(Number(el.getAttribute("data-cell"))); break;
+    case "pick-hand": onHandCardClick(el.getAttribute("data-kind"), el.getAttribute("data-uid")); break;
+  }
+}
+
+function openRulesModal(){
+  document.getElementById("rulesModal").classList.add("open");
+  timerPaused = true;
+}
+function closeRulesModal(){
+  document.getElementById("rulesModal").classList.remove("open");
+  timerPaused = false;
+}
+
+// static overlay elements (rules modal, confirm modal, peer-left banner) live outside
+// #app and are never touched by render()'s innerHTML rebuild, so they're wired once here.
+function bindStaticEvents(){
+  document.getElementById("rulesOpenBtn").addEventListener("click", openRulesModal);
+  document.getElementById("rulesCloseBtn").addEventListener("click", closeRulesModal);
+  document.getElementById("confirmCancelBtn").addEventListener("click", function(){
+    document.getElementById("confirmModal").classList.remove("open");
+  });
+  document.getElementById("confirmOkBtn").addEventListener("click", function(){
+    document.getElementById("confirmModal").classList.remove("open");
+    clearTurnTimer();
+    netDisconnect();
+    hidePeerLeftBanner();
+    G = newGame();
+    goPhase("mode");
+  });
+  document.getElementById("peerLeftBanner").addEventListener("click", function(){
+    hidePeerLeftBanner();
+  });
+}
+
+bindStaticEvents();
+
+// deep link: /?room=ABC123 lands straight on the join form with the room filled in
+(function(){
+  var m = /[?&]room=([A-Za-z0-9]{1,6})/.exec(location.search);
+  if(m){
+    pendingJoinRoom = m[1].toUpperCase();
+    startOnlineFlow();
+    goPhase("online-join");
+    return;
+  }
+  render();
+})();
+})();
+</script>
+</body>
+</html>
