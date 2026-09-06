@@ -284,8 +284,10 @@
 
   /* ---------- result ---------- */
   .result-banner{
+    position:relative; overflow:hidden;
     display:flex; flex-direction:column; align-items:center; gap:.4rem; padding:2.4rem 1.5rem 1rem; text-align:center;
   }
+  .result-banner>*{position:relative; z-index:1;}
   .result-banner .eyebrow{margin-bottom:.3rem;}
   .result-banner h2{font-size:clamp(2rem,6vw,3rem);}
   .result-stats{display:grid; grid-template-columns:1fr 1fr; gap:1rem; width:100%; max-width:34rem;}
@@ -293,6 +295,63 @@
   .stat-card .num{font-family:var(--font-mono); font-size:1.6rem; font-weight:700; color:var(--accent);}
   .stat-card .lbl{font-size:.72rem; color:var(--ink-faint); letter-spacing:.06em;}
   .result-actions{display:flex; gap:.8rem; margin-top:1rem; flex-wrap:wrap; justify-content:center;}
+
+  /* victory: spinning light rays behind the headline + a pulsing glow on the text */
+  .result-banner.fx-win::before{
+    content:""; position:absolute; inset:-60% -30%; z-index:0;
+    background:conic-gradient(from 0deg,
+      transparent 0deg, rgba(214,40,57,.4) 7deg, transparent 24deg,
+      transparent 176deg, rgba(214,40,57,.4) 183deg, transparent 200deg,
+      transparent 356deg, rgba(214,40,57,.4) 360deg);
+    animation:fxRaysSpin 7s linear infinite;
+  }
+  .result-banner.fx-win h2{animation:fxWinGlow 1.5s ease-in-out infinite; text-shadow:0 0 18px var(--accent);}
+  .result-banner.fx-lose h2{color:var(--ink-soft); filter:grayscale(.35);}
+  .result-banner.fx-lose::before{
+    content:""; position:absolute; inset:0; z-index:0;
+    background:radial-gradient(ellipse at 50% 20%, rgba(0,0,0,.35), transparent 70%);
+  }
+  @keyframes fxRaysSpin{ to{ transform:rotate(360deg); } }
+  @keyframes fxWinGlow{
+    0%,100%{ text-shadow:0 0 16px var(--accent), 0 0 30px rgba(214,40,57,.4); }
+    50%{ text-shadow:0 0 34px var(--accent), 0 0 68px rgba(214,40,57,.75); }
+  }
+
+  /* ---------- sound toggle ---------- */
+  .soundbtn{position:fixed; top:14px; left:14px; z-index:20;}
+  body.phase-battle .soundbtn{display:none;}
+
+  /* ---------- floating action effects (fuse / drop / combat) ---------- */
+  #fxLayer{position:fixed; inset:0; z-index:45; overflow:hidden; pointer-events:none;}
+  #fxLayer .fx-fuse, #fxLayer .fx-drop, #fxLayer .fx-combat{position:absolute; border-radius:10px;}
+  #fxLayer .fx-fuse{
+    background:radial-gradient(circle, rgba(255,214,120,.6), rgba(255,214,120,0) 70%);
+    box-shadow:0 0 0 0 rgba(255,196,84,.85);
+    animation:fxFusePulse .7s ease-out forwards;
+  }
+  @keyframes fxFusePulse{
+    0%{ transform:scale(.55); opacity:0; }
+    30%{ opacity:1; }
+    100%{ transform:scale(1.7); opacity:0; }
+  }
+  #fxLayer .fx-drop{
+    border:2px solid rgba(255,255,255,.85);
+    box-shadow:0 0 16px 2px rgba(255,255,255,.35);
+    animation:fxDropRing .45s ease-out forwards;
+  }
+  @keyframes fxDropRing{
+    0%{ transform:scale(.7); opacity:.95; }
+    100%{ transform:scale(1.4); opacity:0; }
+  }
+  #fxLayer .fx-combat{
+    background:radial-gradient(circle, rgba(255,64,64,.6), rgba(255,64,64,0) 70%);
+    animation:fxCombatFlash .4s ease-out forwards;
+  }
+  @keyframes fxCombatFlash{
+    0%{ transform:scale(.85); opacity:0; }
+    25%{ opacity:1; }
+    100%{ transform:scale(1.3); opacity:0; }
+  }
 
   .helpbtn{position:fixed; top:14px; right:14px; z-index:20;}
   body.phase-battle .helpbtn{display:none;}
@@ -319,7 +378,9 @@
 <body>
 
 <div id="app"></div>
+<div id="fxLayer" aria-hidden="true"></div>
 <button class="btn small helpbtn" id="rulesOpenBtn" type="button">ルール</button>
+<button class="btn small soundbtn" id="soundToggleBtn" type="button" title="音のオン/オフ">🔊</button>
 <div class="peer-left-banner" id="peerLeftBanner">相手が切断しました</div>
 
 <div class="rules-modal" id="rulesModal">
@@ -468,6 +529,209 @@ var SKIP_LIMIT = 3;
 var G = newGame();
 var turnTimerHandle = null;
 var timerPaused = false; // frozen while the rules modal is open, so reading up doesn't cost time
+
+/* ============================== sound & fx ==============================
+ * Everything here is synthesized with the Web Audio API - no external audio
+ * files are shipped, so the game stays a single portable HTML file. Effects
+ * are only ever triggered from the *real* action call sites (onCellClick,
+ * applyRemoteAction, cpuTakeTurn's chosen move) - never from inside
+ * performMove/performFuse/performCombat/dropCardToBoard themselves, because
+ * the CPU's search (withSimulatedG) calls those same functions hundreds of
+ * times against a throwaway board while just evaluating candidate moves.
+ */
+var Sound = (function(){
+  var ctx = null, master = null, sfxBus = null, bgmBus = null;
+  var muted = false;
+  try { muted = localStorage.getItem("jacking.muted")==="1"; } catch(e){}
+  var noiseBuf = null;
+  var bgmTimerId = null, bgmNextTime = 0, bgmStep = 0;
+  var BGM_BPM = 72;
+  var stepDur = 60/BGM_BPM/2; // eighth notes
+  var scheduleAhead = 0.22, lookaheadMs = 60;
+  // sparse, moody D-minor-ish phrase over 16 eighth-note steps (0 = rest)
+  var MELODY = [293.66,0,349.23,0, 293.66,0,261.63,0, 0,220.00,0,293.66, 246.94,0,0,0];
+
+  function ensureCtx(){
+    if(ctx) return ctx;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return null;
+    try{
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = muted?0:1; master.connect(ctx.destination);
+      sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
+      bgmBus = ctx.createGain(); bgmBus.gain.value = 1; bgmBus.connect(master);
+    } catch(e){ ctx = null; }
+    return ctx;
+  }
+  function getNoiseBuf(){
+    if(noiseBuf) return noiseBuf;
+    var len = ctx.sampleRate; // 1s, reused/looped-slice for every noise burst
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for(var i=0;i<len;i++) d[i] = Math.random()*2-1;
+    return noiseBuf;
+  }
+  // a single enveloped oscillator tone, scheduled at an absolute AudioContext time
+  function tone(freq, t0, dur, opts){
+    opts = opts||{};
+    var osc = ctx.createOscillator();
+    osc.type = opts.type||"sine";
+    osc.frequency.setValueAtTime(Math.max(1,freq), t0);
+    if(opts.slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(1,opts.slideTo), t0+dur);
+    var g = ctx.createGain();
+    var peak = opts.gain===undefined?0.22:opts.gain;
+    var atk = opts.attack||0.012;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0+atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, Math.max(t0+atk+0.03, t0+dur));
+    osc.connect(g); g.connect(opts.bus||sfxBus);
+    osc.start(t0); osc.stop(t0+dur+0.05);
+  }
+  function noiseBurst(t0, dur, opts){
+    opts = opts||{};
+    var src = ctx.createBufferSource();
+    src.buffer = getNoiseBuf();
+    var filt = ctx.createBiquadFilter();
+    filt.type = opts.filterType||"lowpass";
+    filt.frequency.setValueAtTime(opts.freq||1200, t0);
+    if(opts.freqTo) filt.frequency.exponentialRampToValueAtTime(opts.freqTo, t0+dur);
+    var g = ctx.createGain();
+    var peak = opts.gain===undefined?0.3:opts.gain;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(peak, t0+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    src.connect(filt); filt.connect(g); g.connect(opts.bus||sfxBus);
+    src.start(t0); src.stop(t0+dur+0.05);
+  }
+
+  function playMove(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    noiseBurst(t0, 0.05, {freq:2600, freqTo:900, gain:0.07});
+  }
+  function playDrop(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    noiseBurst(t0, 0.09, {freq:2200, freqTo:280, gain:0.24});
+    tone(95, t0, 0.16, {type:"sine", gain:0.32, attack:0.004});
+  }
+  function playFuse(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    tone(220, t0, 0.22, {type:"triangle", slideTo:440, gain:0.2, attack:0.01});
+    tone(440, t0+0.03, 0.28, {type:"sine", slideTo:880, gain:0.16, attack:0.01});
+    tone(880, t0+0.22, 0.5, {type:"sine", gain:0.18, attack:0.006});
+    tone(1318.5, t0+0.24, 0.45, {type:"sine", gain:0.11, attack:0.006});
+  }
+  function playCombat(mutual){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    noiseBurst(t0, 0.12, {freq:3000, freqTo:200, gain:0.28});
+    tone(mutual?110:150, t0, 0.25, {type:"sawtooth", slideTo:mutual?40:60, gain:0.26});
+    if(mutual) noiseBurst(t0+0.07, 0.1, {freq:2400, freqTo:150, gain:0.2});
+  }
+  function playWin(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    duckBgm(1.8);
+    [523.25,659.25,783.99,1046.5].forEach(function(f,i){
+      tone(f, t0+i*0.12, 0.5, {type:"triangle", gain:0.2, attack:0.012, bus:sfxBus});
+    });
+    tone(130.81, t0, 0.9, {type:"sine", gain:0.22, attack:0.02});
+  }
+  function playLose(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    duckBgm(1.6);
+    [440,392,349.23,293.66].forEach(function(f,i){
+      tone(f, t0+i*0.17, 0.5, {type:"sawtooth", gain:0.14, attack:0.02});
+    });
+    tone(110, t0, 1.0, {type:"sine", gain:0.18});
+  }
+  function playDraw(){
+    var c = ensureCtx(); if(!c) return;
+    var t0 = c.currentTime;
+    duckBgm(1.2);
+    tone(392, t0, 0.3, {type:"triangle", gain:0.16});
+    tone(349.23, t0+0.32, 0.4, {type:"triangle", gain:0.16});
+  }
+
+  function scheduleBgmStep(step, t0){
+    if(step%16===0){
+      var barLen = stepDur*16*1.05;
+      tone(73.42, t0, barLen, {type:"sawtooth", gain:0.045, attack:0.5, bus:bgmBus});
+      tone(73.42*1.006, t0, barLen, {type:"sawtooth", gain:0.035, attack:0.5, bus:bgmBus});
+    }
+    var note = MELODY[step % MELODY.length];
+    if(note) tone(note, t0, stepDur*1.8, {type:"triangle", gain:0.065, attack:0.02, bus:bgmBus});
+    if(step%8===0) tone(55, t0, 0.35, {type:"sine", gain:0.04, attack:0.03, bus:bgmBus});
+  }
+  function bgmScheduler(){
+    if(!ctx) return;
+    while(bgmNextTime < ctx.currentTime + scheduleAhead){
+      scheduleBgmStep(bgmStep, bgmNextTime);
+      bgmStep++;
+      bgmNextTime += stepDur;
+    }
+  }
+  function startBgm(){
+    var c = ensureCtx(); if(!c || bgmTimerId) return;
+    bgmStep = 0;
+    bgmNextTime = c.currentTime + 0.15;
+    bgmTimerId = setInterval(bgmScheduler, lookaheadMs);
+  }
+  function duckBgm(holdSec){
+    if(!ctx) return;
+    var t = ctx.currentTime;
+    bgmBus.gain.cancelScheduledValues(t);
+    bgmBus.gain.setValueAtTime(bgmBus.gain.value, t);
+    bgmBus.gain.linearRampToValueAtTime(0.15, t+0.12);
+    bgmBus.gain.linearRampToValueAtTime(1, t+holdSec);
+  }
+
+  // must be invoked from within a user-gesture handler (browsers block audio
+  // otherwise) - called at the top of every UI action, so it's a no-op after
+  // the first real click.
+  function resume(){
+    var c = ensureCtx(); if(!c) return;
+    if(c.state==="suspended") c.resume();
+    startBgm();
+  }
+  function setMuted(v){
+    muted = !!v;
+    try{ localStorage.setItem("jacking.muted", muted?"1":"0"); }catch(e){}
+    if(ctx) master.gain.setTargetAtTime(muted?0:1, ctx.currentTime, 0.05);
+  }
+  function isMuted(){ return muted; }
+  function toggleMuted(){ setMuted(!muted); return muted; }
+
+  return {
+    resume:resume, setMuted:setMuted, isMuted:isMuted, toggleMuted:toggleMuted,
+    playMove:playMove, playDrop:playDrop, playFuse:playFuse, playCombat:playCombat,
+    playWin:playWin, playLose:playLose, playDraw:playDraw
+  };
+})();
+
+// visual "burst" effects positioned over a board cell. Lives in #fxLayer, a
+// fixed overlay that sits OUTSIDE #app so render()'s innerHTML rebuild never
+// touches it - each burst is a short-lived element that removes itself.
+var fxLayerEl = document.getElementById("fxLayer");
+function spawnCellFx(cell, type){
+  if(!fxLayerEl) return;
+  var el = document.querySelector('.board [data-cell="'+cell+'"]');
+  if(!el) return;
+  var r = el.getBoundingClientRect();
+  var fx = document.createElement("div");
+  fx.className = "fx-"+type;
+  fx.style.left = r.left+"px";
+  fx.style.top = r.top+"px";
+  fx.style.width = r.width+"px";
+  fx.style.height = r.height+"px";
+  fxLayerEl.appendChild(fx);
+  var remove = function(){ if(fx.parentNode) fx.parentNode.removeChild(fx); };
+  fx.addEventListener("animationend", remove);
+  setTimeout(remove, 1200); // fallback in case animationend never fires
+}
 
 /* ============================== online connection ============================== */
 // Net holds the live connection; it survives across newGame() resets so a room
@@ -726,14 +990,18 @@ function findActiveCardByIdentity(owner, value, isJoker){
 function applyRemoteAction(peerSeat, msg){
   if(msg.kind==="move"){
     performMove(G.cards[G.board[msg.from]], msg.to);
+    Sound.playMove();
   } else if(msg.kind==="fuse"){
     performFuse(G.cards[G.board[msg.from]], G.cards[G.board[msg.to]]);
+    Sound.playFuse(); spawnCellFx(msg.to, "fuse");
   } else if(msg.kind==="attack"){
-    performCombat(G.cards[G.board[msg.from]], G.cards[G.board[msg.to]], msg.to);
+    var remoteCombatResult = performCombat(G.cards[G.board[msg.from]], G.cards[G.board[msg.to]], msg.to);
+    Sound.playCombat(remoteCombatResult && remoteCombatResult.mutual); spawnCellFx(msg.to, "combat");
   } else if(msg.kind==="drop"){
     var card = findActiveCardByIdentity(msg.origin, msg.value, msg.isJoker);
     if(card){
       dropCardToBoard(peerSeat, card, msg.to);
+      Sound.playDrop(); spawnCellFx(msg.to, "drop");
     }
   } else if(msg.kind==="timeout"){
     endTurnByTimeout();
@@ -1113,7 +1381,7 @@ function performCombat(attacker, defender, destCell){
     G.board[defender.cell] = null;
     sendToGraveyard(attacker);
     sendToGraveyard(defender);
-    return;
+    return {mutual:true};
   }
 
   var capturerPid = winner.owner;
@@ -1149,6 +1417,7 @@ function performCombat(attacker, defender, destCell){
     G.board[winner.cell]=null;
     sendToGraveyard(winner);
   }
+  return {mutual:false, winnerOwner:capturerPid};
 }
 
 function cardName(card){
@@ -1172,16 +1441,19 @@ function onCellClick(cell){
     var la = legalActionsForBoardCard(card);
     if(la.moves.indexOf(cell)!==-1){
       performMove(card, cell);
+      Sound.playMove();
       if(G.mode==="online") netSend({k:"action", kind:"move", from:fromCell, to:cell});
       afterAction(); return;
     }
     if(la.fuses.indexOf(cell)!==-1){
       performFuse(card, G.cards[G.board[cell]]);
+      Sound.playFuse(); spawnCellFx(cell, "fuse");
       if(G.mode==="online") netSend({k:"action", kind:"fuse", from:fromCell, to:cell});
       afterAction(); return;
     }
     if(la.attacks.indexOf(cell)!==-1){
-      performCombat(card, G.cards[G.board[cell]], cell);
+      var combatResult = performCombat(card, G.cards[G.board[cell]], cell);
+      Sound.playCombat(combatResult && combatResult.mutual); spawnCellFx(cell, "combat");
       if(G.mode==="online") netSend({k:"action", kind:"attack", from:fromCell, to:cell});
       afterAction(); return;
     }
@@ -1196,6 +1468,7 @@ function onCellClick(cell){
       var c = G.cards[G.sel.uid];
       if(c.loc==="captured" && G.capturedSummonUsed[pid]){ clearSel(); render(); return; }
       dropCardToBoard(pid, c, cell);
+      Sound.playDrop(); spawnCellFx(cell, "drop");
       if(G.mode==="online") netSend({k:"action", kind:"drop", origin:c.origin, value:c.value, isJoker:c.isJoker, to:cell});
       afterAction();
       return;
@@ -1323,7 +1596,7 @@ function applyCandidateAction(pid, action){
   } else if(action.type==="fuse"){
     performFuse(card, G.cards[G.board[action.dest]]);
   } else if(action.type==="attack"){
-    performCombat(card, G.cards[G.board[action.dest]], action.dest);
+    return performCombat(card, G.cards[G.board[action.dest]], action.dest);
   } else if(action.type==="drop"){
     dropCardToBoard(pid, card, action.dest);
   }
@@ -1422,30 +1695,67 @@ function cpuScoreNormal(pid, action){
   });
   return score + Math.random()*1.5;
 }
-// Lv.3: full depth-3 minimax - my move, their best reply, then credit for my best
-// follow-up after that. This is what makes it actually plan rather than just avoid
-// the single worst immediate outcome: a move that looks risky one ply out but has a
-// strong comeback two plies out now scores correctly instead of being avoided.
-function cpuScoreHard(pid, action){
-  return withSimulatedG(function(simG){
-    applyCandidateAction(pid, action);
+// Lv.3 searches HARD_SEARCH_PLIES plies beyond its own candidate move using
+// alpha-beta pruning. The raw branching factor here is large - a single drop
+// action alone is roughly (reserve+captured cards) x (empty legal cells), which
+// can be 50-70+ options - so a full-width search even 4-5 plies deep would hang
+// the page for many seconds. BEAM_WIDTH caps how many candidates get expanded at
+// each node: every legal action is first ranked with a cheap one-ply heuristic
+// (quickActionScore), and only the top BEAM_WIDTH of those are searched deeper.
+// This is what actually fixes "always drops the same card up front, then dumps
+// the rest of its hand": that pattern is what a *shallow, exhaustive* search
+// converges on, because flooding the board maximizes the static eval right now.
+// A search that's deep (even over a shortlist) instead sees a few moves further
+// and weighs real tactical lines - captures, fused counters, forced trades,
+// whether an overextended drop gets punished - rather than repeating the single
+// locally-greedy opening every game.
+var HARD_SEARCH_PLIES = 5;
+var ROOT_BEAM_WIDTH = 16;
+var DEEP_BEAM_WIDTH = 8;
+// rough move ordering so alpha-beta prunes effectively: captures/fuses swing the
+// score the most and are the likeliest source of a cutoff, so try those first.
+function actionOrderKey(action){
+  if(action.type==="attack") return 3;
+  if(action.type==="fuse") return 2;
+  if(action.type==="move") return 1;
+  return 0; // drop
+}
+function orderActionsForSearch(actions){
+  actions.sort(function(a,b){ return actionOrderKey(b)-actionOrderKey(a); });
+}
+// one-ply heuristic used only to shortlist candidates before the expensive deep
+// search descends into them - scored from `mover`'s own perspective, since this
+// is also used to guess an opponent's plausible replies.
+function quickActionScore(mover, action){
+  return withSimulatedG(function(){
+    applyCandidateAction(mover, action);
     checkWin();
-    if(simG.winner===pid) return 100000;
-    if(simG.winner===other(pid)) return -100000;
-    var worstForMe = minimaxReply(pid, other(pid), 2);
-    return worstForMe + Math.random()*0.15;
+    if(G.winner===mover) return 100000;
+    if(G.winner===other(mover)) return -100000;
+    return evalPosition(mover) - hangingPenalty(mover)*0.6;
   });
 }
+function topCandidateActions(mover, actions, limit){
+  if(actions.length<=limit) return actions;
+  var scored = actions.map(function(a){ return {a:a, s:quickActionScore(mover, a)}; });
+  scored.sort(function(x,y){ return y.s-x.s; });
+  return scored.slice(0, limit).map(function(x){ return x.a; });
+}
 // alternates perspective each ply: `mover` is who acts at this node, `forPid` is
-// whose position we're ultimately scoring. depthLeft counts remaining plies to search.
-function minimaxReply(forPid, mover, depthLeft){
+// whose position we're ultimately scoring. depthLeft counts remaining plies to
+// search. alpha/beta bound the score this node's parent still cares about - once a
+// branch proves it can't change the parent's decision, the rest of it is skipped.
+function minimaxReply(forPid, mover, depthLeft, alpha, beta){
   var actions = generateCandidateActions(mover);
   var maximizing = (mover===forPid);
   if(!actions.length){
     return evalPosition(forPid) - hangingPenalty(forPid)*0.6;
   }
-  var best = null;
-  actions.forEach(function(action){
+  actions = topCandidateActions(mover, actions, DEEP_BEAM_WIDTH);
+  orderActionsForSearch(actions);
+  var best = maximizing ? -Infinity : Infinity;
+  for(var i=0;i<actions.length;i++){
+    var action = actions[i];
     var score = withSimulatedG(function(simG){
       applyCandidateAction(mover, action);
       checkWin();
@@ -1454,17 +1764,43 @@ function minimaxReply(forPid, mover, depthLeft){
       if(depthLeft<=1){
         return evalPosition(forPid) - hangingPenalty(forPid)*0.6;
       }
-      return minimaxReply(forPid, other(mover), depthLeft-1);
+      return minimaxReply(forPid, other(mover), depthLeft-1, alpha, beta);
     });
-    if(best===null || (maximizing ? score>best : score<best)) best = score;
-  });
+    if(maximizing){
+      if(score>best) best = score;
+      if(best>alpha) alpha = best;
+    } else {
+      if(score<best) best = score;
+      if(best<beta) beta = best;
+    }
+    if(alpha>=beta) break; // the sibling that set this bound already makes this branch irrelevant
+  }
   return best;
 }
 
 function cpuChooseAction(pid, level){
   var actions = generateCandidateActions(pid);
   if(!actions.length) return null;
-  var scorer = level===1 ? cpuScoreEasy : (level===3 ? cpuScoreHard : cpuScoreNormal);
+  if(level===3){
+    actions = topCandidateActions(pid, actions, ROOT_BEAM_WIDTH);
+    orderActionsForSearch(actions);
+    var alpha = -Infinity;
+    var best=null, bestScore=-Infinity;
+    for(var i=0;i<actions.length;i++){
+      var action = actions[i];
+      var s = withSimulatedG(function(simG){
+        applyCandidateAction(pid, action);
+        checkWin();
+        if(simG.winner===pid) return 100000;
+        if(simG.winner===other(pid)) return -100000;
+        return minimaxReply(pid, other(pid), HARD_SEARCH_PLIES, alpha, Infinity);
+      }) + Math.random()*0.15;
+      if(s>bestScore){ bestScore=s; best=action; }
+      if(bestScore>alpha) alpha = bestScore;
+    }
+    return best;
+  }
+  var scorer = level===1 ? cpuScoreEasy : cpuScoreNormal;
   var best=null, bestScore=-Infinity;
   actions.forEach(function(action){
     var s = scorer(pid, action);
@@ -1478,7 +1814,11 @@ function cpuTakeTurn(){
   var pid="p2";
   var action = cpuChooseAction(pid, G.cpuLevel||2);
   if(!action){ G.turnPlayer="p1"; G.turnCount++; startTurnTimer(); render(); return; }
-  applyCandidateAction(pid, action);
+  var cpuResult = applyCandidateAction(pid, action);
+  if(action.type==="move") Sound.playMove();
+  else if(action.type==="fuse"){ Sound.playFuse(); spawnCellFx(action.dest, "fuse"); }
+  else if(action.type==="attack"){ Sound.playCombat(cpuResult && cpuResult.mutual); spawnCellFx(action.dest, "combat"); }
+  else if(action.type==="drop"){ Sound.playDrop(); spawnCellFx(action.dest, "drop"); }
   checkWin();
   if(G.winner){ clearTurnTimer(); goPhase("result"); return; }
   G.turnPlayer="p1"; G.turnCount++;
@@ -1487,8 +1827,27 @@ function cpuTakeTurn(){
 }
 
 /* ============================== phase control ============================== */
+// "win"/"lose"/"draw" from the local viewer's point of view - shared by the
+// result screen's visual styling and its victory/defeat sound cue. Hotseat
+// has no "local side" (both players share the screen), so it's always framed
+// as a shared celebration; a spectator gets the neutral draw-style treatment.
+function resultPerspective(){
+  if(G.winner==="draw") return "draw";
+  if(G.mode==="online"){
+    if(isSpectator()) return "draw";
+    return G.winner===G.mySeat ? "win" : "lose";
+  }
+  if(G.mode==="cpu") return G.winner==="p1" ? "win" : "lose";
+  return "win";
+}
 function goPhase(p){
   G.phase=p;
+  if(p==="result"){
+    var perspective = resultPerspective();
+    if(perspective==="win") Sound.playWin();
+    else if(perspective==="lose") Sound.playLose();
+    else Sound.playDraw();
+  }
   if(p==="result" && G.mode==="online"){
     maybeSendSnapshot();   // push the final board to spectators before we drop the link
     netDisconnect();
@@ -1977,6 +2336,7 @@ function renderBattle(){
       skipTallyEl()+
       '<div class="battle-top-actions">'+
         ((isSpectator() || Net.spectators>0) ? '<span class="turn-pill" style="font-size:.78rem;color:var(--ink-soft)">👁 観戦 '+Net.spectators+'人</span>' : '')+
+        '<button class="btn small ghost" data-action="toggle-sound" title="音のオン/オフ">'+(Sound.isMuted()?"🔇":"🔊")+'</button>'+
         '<button class="btn small ghost" data-action="open-rules">ルール</button>'+
         (isSpectator()
           ? '<button class="btn small ghost" data-action="goto-title">観戦をやめる</button>'
@@ -2012,7 +2372,7 @@ function renderResult(){
     else detail = "相手のカードを全滅させた";
   }
   return '<section class="screen" id="screen-result">'+
-    '<div class="result-banner">'+
+    '<div class="result-banner fx-'+resultPerspective()+'">'+
       '<span class="eyebrow">Result</span>'+
       '<h2'+(isDraw?' style="color:var(--ink-soft)"':'')+'>'+headline+'</h2>'+
       '<p style="color:var(--ink-soft)">'+(isDraw?"":"勝因: ")+detail+'</p>'+
@@ -2044,6 +2404,7 @@ function bindEvents(){
 }
 
 function handleAction(action, el){
+  Sound.resume(); // unlock/start audio on the first real user gesture
   switch(action){
     case "goto-mode": goPhase("mode"); break;
     case "goto-cpu-level": goPhase("cpu-level"); break;
@@ -2108,6 +2469,7 @@ function handleAction(action, el){
     case "janken-proceed": jankenProceed(); break;
     case "cell-click": onCellClick(Number(el.getAttribute("data-cell"))); break;
     case "pick-hand": onHandCardClick(el.getAttribute("data-kind"), el.getAttribute("data-uid")); break;
+    case "toggle-sound": Sound.toggleMuted(); updateSoundBtn(); render(); break;
   }
 }
 
@@ -2139,6 +2501,19 @@ function bindStaticEvents(){
   document.getElementById("peerLeftBanner").addEventListener("click", function(){
     hidePeerLeftBanner();
   });
+  var soundBtn = document.getElementById("soundToggleBtn");
+  updateSoundBtn(soundBtn);
+  soundBtn.addEventListener("click", function(){
+    Sound.resume();
+    Sound.toggleMuted();
+    updateSoundBtn(soundBtn);
+  });
+}
+function updateSoundBtn(btn){
+  btn = btn || document.getElementById("soundToggleBtn");
+  var muted = Sound.isMuted();
+  btn.textContent = muted ? "🔇" : "🔊";
+  btn.title = muted ? "音を再生する" : "音を止める";
 }
 
 bindStaticEvents();
